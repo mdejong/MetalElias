@@ -24,6 +24,8 @@ Implementation of renderer class which perfoms Metal setup and per frame renderi
 
 #import "Util.h"
 
+#import "elias_encode.h"
+
 const static unsigned int blockDim = HUFF_BLOCK_DIM;
 
 @interface AAPLRenderer ()
@@ -536,7 +538,37 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
     
     printf("block order done\n");
   }
-  
+    
+    if ((1)) {
+        NSString *tmpDir = NSTemporaryDirectory();
+        NSString *path = [tmpDir stringByAppendingPathComponent:@"block_deltas.bytes"];
+        [outBlockOrderSymbolsData writeToFile:path atomically:TRUE];
+        NSLog(@"wrote %@", path);
+        
+        // convert signed bytes to unsigned numbers
+        
+        NSMutableData *mData = [NSMutableData data];
+        
+        uint8_t *bytePtr = (uint8_t *) outBlockOrderSymbolsData.bytes;
+        int bytePtrLength = (int) outBlockOrderSymbolsData.length;
+        
+        for (int i = 0; i < bytePtrLength; i++) {
+            uint8_t byteVal = bytePtr[i];
+            uint8_t unsignedByteVal = pixelpack_int8_to_offset_uint8(byteVal);
+            [mData appendBytes:&unsignedByteVal length:1];
+        }
+        
+        NSString *path2 = [tmpDir stringByAppendingPathComponent:@"block_deltas_unsigned.bytes"];
+        [mData writeToFile:path2 atomically:TRUE];
+        NSLog(@"wrote %@", path2);
+        
+        // Calculate number of bits needed to store this data as elias gamma encoding
+        
+        int numBits = elias_gamma_num_bits((uint8_t*)mData.bytes, bytePtrLength);
+
+        NSLog(@"elias gamma encoded num bytes %d", numBits/8);
+    }
+
   // number of blocks must be an exact multiple of the block dimension
   
   assert((outBlockOrderSymbolsNumBytes % (blockDim * blockDim)) == 0);

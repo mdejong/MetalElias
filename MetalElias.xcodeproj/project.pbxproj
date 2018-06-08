@@ -36,6 +36,7 @@
 		3C56AF9B1FEC70F000005C41 /* BigBridge.png in Resources */ = {isa = PBXBuildFile; fileRef = 3C56AF9A1FEC70F000005C41 /* BigBridge.png */; };
 		3C56AF9E1FECE66B00005C41 /* HuffmanUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3C56AF9C1FECE66A00005C41 /* HuffmanUtil.cpp */; };
 		3CB220AA1F7E03FF0023B470 /* Image.png in Resources */ = {isa = PBXBuildFile; fileRef = 3CB220A81F7E03FF0023B470 /* Image.png */; };
+		3CBED75020CAFD0F00A64451 /* elias_encode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3CBED74E20CAFD0C00A64451 /* elias_encode.cpp */; };
 		3CDE879F1FBDFE1300EDB3FC /* Huffman.mm in Sources */ = {isa = PBXBuildFile; fileRef = 3CDE879E1FBDFE1300EDB3FC /* Huffman.mm */; };
 		3CDE87A21FC0FAAC00EDB3FC /* Util.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CDE87A11FC0FAAC00EDB3FC /* Util.m */; };
 		3CDE87A81FC2997C00EDB3FC /* HuffmanEncoder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3CDE87A61FC2997B00EDB3FC /* HuffmanEncoder.cpp */; };
@@ -87,6 +88,9 @@
 		3C56AF9D1FECE66A00005C41 /* HuffmanUtil.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = HuffmanUtil.hpp; sourceTree = "<group>"; };
 		3C56AF9F1FECE8F900005C41 /* HuffmanLookupSymbol.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HuffmanLookupSymbol.h; sourceTree = "<group>"; };
 		3CB220A81F7E03FF0023B470 /* Image.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Image.png; sourceTree = "<group>"; };
+		3CBED74D20CAF01C00A64451 /* elias.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = elias.hpp; sourceTree = "<group>"; };
+		3CBED74E20CAFD0C00A64451 /* elias_encode.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = elias_encode.cpp; sourceTree = "<group>"; };
+		3CBED74F20CAFD0D00A64451 /* elias_encode.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = elias_encode.h; sourceTree = "<group>"; };
 		3CDE879D1FBDFE1300EDB3FC /* Huffman.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Huffman.h; sourceTree = "<group>"; };
 		3CDE879E1FBDFE1300EDB3FC /* Huffman.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = Huffman.mm; sourceTree = "<group>"; };
 		3CDE87A01FC0FAAC00EDB3FC /* Util.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Util.h; sourceTree = "<group>"; };
@@ -189,6 +193,9 @@
 				3CDE87A71FC2997B00EDB3FC /* HuffmanEncoder.hpp */,
 				3CDE87A61FC2997B00EDB3FC /* HuffmanEncoder.cpp */,
 				3CDE87A91FC29AE900EDB3FC /* huff_util.hpp */,
+				3CBED74D20CAF01C00A64451 /* elias.hpp */,
+				3CBED74F20CAFD0D00A64451 /* elias_encode.h */,
+				3CBED74E20CAFD0C00A64451 /* elias_encode.cpp */,
 				3CDE87A01FC0FAAC00EDB3FC /* Util.h */,
 				3CDE87A11FC0FAAC00EDB3FC /* Util.m */,
 				3A30EDF71EB67EA800B4FC0B /* AAPLImage.h */,
@@ -435,6 +442,7 @@
 				3AF7EA0A1EB64A46003BB06D /* AAPLRenderer.m in Sources */,
 				3CE5C0FB1FCCF46B0031E0EA /* HuffRenderFrame.m in Sources */,
 				3AF7E9D61EB64A46003BB06D /* AAPLViewController.m in Sources */,
+				3CBED75020CAFD0F00A64451 /* elias_encode.cpp in Sources */,
 				3CDE879F1FBDFE1300EDB3FC /* Huffman.mm in Sources */,
 				3A30EDF91EB67EA800B4FC0B /* AAPLImage.m in Sources */,
 				3C56AF9E1FECE66B00005C41 /* HuffmanUtil.cpp in Sources */,
