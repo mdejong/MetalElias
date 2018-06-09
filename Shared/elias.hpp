@@ -19,16 +19,30 @@
 
 using namespace std;
 
+static inline
+void EliasGamma_printBits16(unsigned int x, string tag)
+{
+    printf("%s\n", tag.c_str());
+    printf("0b");
+    for ( int i = 15; i >= 0; i-- ) {
+        bool b = ((x >> i) & 0x1) != 0;
+        printf("%d", (int)b);
+    }
+    printf("\n");
+}
+
 class EliasGammaEncoder
 {
-public:
+    public:
     bitset<8> bits;
     unsigned int bitOffset;
     vector<uint8_t> bytes;
     unsigned int numEncodedBits;
+    bool emitPaddingZeros;
+    bool emitMSB;
     
     EliasGammaEncoder()
-    : bitOffset(0), numEncodedBits(0) {
+    : bitOffset(0), numEncodedBits(0), emitPaddingZeros(false), emitMSB(false) {
         bytes.reserve(1024);
     }
     
@@ -39,30 +53,48 @@ public:
         numEncodedBits = 0;
     }
     
-    void encodeBit(bool bit) {
+    // This internal method writes bits as a byte
+    
+    void emitBitsAsByte() {
         const bool debug = false;
         
-        bits.set(bitOffset++, bit);
+        uint8_t byteVal = 0;
         
-        if (bitOffset == 8) {
-            uint8_t byteVal = 0;
-            
-            // Flush 8 bits to some external output
-            
+        // Flush 8 bits to backing array of bytes.
+        // Note that bits can be written as either
+        // LSB first (reversed) or MSB first (not reversed).
+        
+        if (emitMSB) {
+            for ( int i = 0; i < 8; i++ ) {
+                unsigned int v = (bits.test(i) ? 0x1 : 0x0);
+                byteVal |= (v << (7 - i));
+            }
+        } else {
             for ( int i = 0; i < 8; i++ ) {
                 unsigned int v = (bits.test(i) ? 0x1 : 0x0);
                 byteVal |= (v << i);
             }
-            
-            bits.reset();
-            bitOffset = 0;
-            
-            if (debug) {
-                printf("encodeBit() emit byte 0x%02X\n", byteVal);
-            }
-            
-            bytes.push_back(byteVal);
+        }
+        
+        bits.reset();
+        bitOffset = 0;
+        
+        if (debug) {
+            printf("emitBitsAsByte() emit byte 0x%02X\n", byteVal);
+            EliasGamma_printBits16(byteVal, "byte");
+        }
+        
+        bytes.push_back(byteVal);
+        
+        return;
+    }
+    
+    void encodeBit(bool bit) {
+        bits.set(bitOffset++, bit);
+        
+        if (bitOffset == 8) {
             numEncodedBits += 8;
+            emitBitsAsByte();
         }
     }
     
@@ -92,7 +124,7 @@ public:
         // In DEBUG mode, bits contains bits for this specific symbol.
         assert(highBitValue != -1);
 #endif // DEBUG
-
+        
         return highBitValue;
     }
     
@@ -127,9 +159,9 @@ public:
         // Emit highBitValue number of zero bits (unary)
         
         for (int i = 0; i < highBitValue; i++) {
-          encodeBit(false);
+            encodeBit(false);
 #if defined(DEBUG)
-          bitsThisSymbol.push_back(false);
+            bitsThisSymbol.push_back(false);
 #endif // DEBUG
         }
         
@@ -138,13 +170,13 @@ public:
         bitsThisSymbol.push_back(true);
 #endif // DEBUG
         
-        // Emit the remaninig bits of the number n
+        // Emit the remaninig bits of the number n.
         
         for (int i = highBitValue - 1; i >= 0; i--) {
-          bool bit = (((number >> i) & 0x1) != 0);
-          encodeBit(bit);
+            bool bit = (((number >> i) & 0x1) != 0);
+            encodeBit(bit);
 #if defined(DEBUG)
-          bitsThisSymbol.push_back(bit);
+            bitsThisSymbol.push_back(bit);
 #endif // DEBUG
         }
         
@@ -159,14 +191,12 @@ public:
             }
             printf("\n");
 #endif // DEBUG
-        }        
+        }
     }
     
     // If any bits still need to be emitted, emit final byte.
     
     void finish() {
-        const bool debug = false;
-        
         if (bitOffset > 0) {
             // Flush 1-8 bits to some external output.
             // Note that all remaining bits must
@@ -184,24 +214,16 @@ public:
                 bits.set(bitOffset++, false);
             }
             
-            uint8_t byteVal = 0;
-            
-            for ( int i = 0; i < 8; i++ ) {
-                unsigned int v = (bits.test(i) ? 0x1 : 0x0);
-                byteVal |= (v << i);
-                
-                if (debug) {
-                    printf("finish() bit %d : byteVal 0x%02X\n", i, byteVal);
-                }
-            }
-            
-            if (debug) {
-                printf("finish() emit byte 0x%02X\n", byteVal);
-            }
-            
-            bits.reset();
-            bitOffset = 0;
-            bytes.push_back(byteVal);
+            emitBitsAsByte();
+        }
+        
+        // Emit two addition bytes that contain all zeros
+        // so that any byte read can always read 2 bytes ahead
+        // without going past the end of the valid buffer.
+        
+        if (emitPaddingZeros) {
+            bytes.push_back(0);
+            bytes.push_back(0);
         }
     }
     
@@ -247,7 +269,7 @@ public:
 
 class EliasGammaDecoder
 {
-public:
+    public:
     bitset<8> bits;
     unsigned int bitOffset;
     vector<uint8_t> bytes;
@@ -314,7 +336,7 @@ public:
         assert(inBytesVec.size() > 0);
         bytes.resize(inBytesVec.size());
         memcpy(bytes.data(), inBytesVec.data(), inBytesVec.size());
-
+        
         for ( ; 1 ; ) {
             unsigned int countOfZeros = 0;
             
@@ -331,7 +353,7 @@ public:
                 bool b = decodeBit();
                 symbol |= ((b ? 1 : 0) << i);
             }
-
+            
             if (isFinishedReading) {
                 break;
             }
@@ -357,4 +379,136 @@ public:
     
 };
 
+// This optimized decoder takes advantage of the limited range of input
+// values (0,255) -> (1,256) so that in the special case where bit
+// 9 is true then this indicates a special case where the original
+// value can only be 256 where all the bits after the 9th bit would
+// be zero. The optimization is that since the special case can be
+// detected by a 16 bit buffer that contains 0x0100. This means the
+// 17th bit need not be read and so the entire test can be done with
+// a 16 bit register.
+
+class EliasGammaDecoderOpt16
+{
+    public:
+    
+    EliasGammaDecoderOpt16()
+    {
+    }
+    
+    // Optimized symbol decode logic that reads a known number of symbols
+    // from inBytesVec with 16 bit register implementation that counts
+    // leading zeros for branchless operation.
+    
+    void decode(const vector<uint8_t> & inBytesVec,
+                unsigned int numSymbols,
+                vector<uint8_t> & outBytesVec)
+    {
+        const bool debug = false;
+        
+        if (outBytesVec.size() != numSymbols) {
+            outBytesVec.resize(numSymbols);
+        }
+        uint8_t *decodedBytesPtr = outBytesVec.data();
+        
+        unsigned int currentNumBits = 0;
+        
+        for ( ; 1 ; ) {
+            if (numSymbols == 0) {
+                break;
+            }
+            
+            // Shift to adjust into 16 bit buffer based
+            // on the number of bits has been consumed.
+            
+            const unsigned int numBitsInByte = 8;
+            unsigned int numBytesRead = (currentNumBits / numBitsInByte);
+            unsigned int numBitsReadMod8 = (currentNumBits % numBitsInByte);
+            
+            if (debug) {
+                printf("currentNumBits %d : numBitsReadMod8 %d\n", numBytesRead, numBitsReadMod8);
+            }
+            
+            uint16_t inputBitPattern = 0;
+            
+            // Unconditionally read 3 bytes
+            
+            uint32_t b0 = inBytesVec[numBytesRead];
+            uint32_t b1 = inBytesVec[numBytesRead+1];
+            uint32_t b2 = inBytesVec[numBytesRead+2];
+            
+            if (debug) {
+                printf("read offsets : %d %d %d\n", numBytesRead, numBytesRead+1, numBytesRead+2);
+                printf("read (b0, b1, b2) 0x%02X 0x%02X 0x%02X\n", b0, b1, b2);
+            }
+            
+            // MSB
+            
+            // Left shift the already consumed bits off left side of b0
+            b0 <<= numBitsReadMod8;
+            b0 &= 0xFF;
+            inputBitPattern = b0 << 8;
+            
+            // Left shift the 8 bits in b1 then OR into inputBitPattern
+            inputBitPattern |= b1 << numBitsReadMod8;
+            
+            // Right shift b2 to throw out unused bits
+            b2 >>= (8 - numBitsReadMod8);
+            inputBitPattern |= b2;
+            
+            if (debug) {
+                EliasGamma_printBits16(inputBitPattern, "inputBitPattern");
+            }
+            
+            // CTZ is count of zeros from least significant bit
+            
+            unsigned int countOfZeros;
+            unsigned int bitsThisSymbol;
+            unsigned int symbol;
+            
+            // MSB
+            // input to __builtin_clz is treated as unsigned
+            // 32 bit number, so always subtract 16.
+            countOfZeros = __builtin_clz((unsigned int)inputBitPattern) - 16;
+            
+            bitsThisSymbol = (countOfZeros * 2 + 1);
+            currentNumBits += bitsThisSymbol;
+            
+            // Shift left to place MSB of value at the MSB of
+            // 16 bit register.
+            
+            unsigned int shiftedLeft = inputBitPattern << countOfZeros;
+            
+            if (debug) {
+                EliasGamma_printBits16(shiftedLeft, "shiftedLeft");
+            }
+            
+            // Shift right to place MSB of value at correct bit offset
+            
+            unsigned int shiftedRight = shiftedLeft >> (16 - (countOfZeros+1));
+            
+            if (debug) {
+                EliasGamma_printBits16(shiftedRight, "shiftedRight");
+            }
+            
+            symbol = shiftedRight;
+            
+            if (debug) {
+                printf("append decoded symbol = %d\n", symbol);
+            }
+            
+            numSymbols -= 1;
+            
+#if defined(DEBUG)
+            assert(symbol >= 1 && symbol <= 256);
+#endif // DEBUG
+            *decodedBytesPtr++ = (symbol - 1);
+        }
+        
+        return;
+    }
+    
+};
+
 #endif // elias_hpp
+
