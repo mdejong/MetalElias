@@ -7,7 +7,7 @@
 typedef struct {
   uint8_t symbol;
   uint8_t bitWidth;
-} HuffLookupSymbol;
+} VariableBitWidthSymbol;
 
 #define DecodeHuffmanBitsFromTablesCompareToOriginal
 

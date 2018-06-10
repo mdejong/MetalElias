@@ -106,7 +106,6 @@ typedef enum AAPLHuffmanTextureIndex
   AAPLTextureCoords = 7,
 } AAPLHuffmanTextureIndex;
 
-#define IMPL_DELTAS_BEFORE_HUFF_ENCODING
 //#define IMPL_DELTAS_AND_INIT_ZERO_DELTA_BEFORE_HUFF_ENCODING
 
 #define HUFF_BLOCK_DIM 8

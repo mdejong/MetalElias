@@ -18,7 +18,7 @@ Implementation of renderer class which perfoms Metal setup and per frame renderi
 
 #import <CoreVideo/CoreVideo.h>
 
-#import "Huffman.h"
+#import "Eliasg.h"
 
 #import "HuffRenderFrame.h"
 
@@ -374,9 +374,9 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
   unsigned int blockWidth = self->renderBlockWidth;
   unsigned int blockHeight = self->renderBlockHeight;
   
-  NSMutableData *outFileHeader = [NSMutableData data];
-  NSMutableData *outCanonHeader = [NSMutableData data];
-  NSMutableData *outHuffCodes = [NSMutableData data];
+//  NSMutableData *outFileHeader = [NSMutableData data];
+//  NSMutableData *outCanonHeader = [NSMutableData data];
+  NSMutableData *outCodes = [NSMutableData data];
   NSMutableData *outBlockBitOffsets = [NSMutableData data];
   
   // To encode symbols with huffman block encoding, the order of the symbols
@@ -424,7 +424,6 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
     printf("block order done\n");
   }
   
-#if defined(IMPL_DELTAS_BEFORE_HUFF_ENCODING)
   if ((1)) {
     // byte deltas
     
@@ -446,7 +445,7 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
 #endif
     
     for ( NSMutableData *blockData in mBlocks ) {
-      NSData *deltasData = [Huffman encodeSignedByteDeltas:blockData];
+      NSData *deltasData = [Eliasg encodeSignedByteDeltas:blockData];
       
 #if defined(IMPL_DELTAS_AND_INIT_ZERO_DELTA_BEFORE_HUFF_ENCODING)
       // When saving the first element of a block, do the deltas
@@ -487,7 +486,7 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
       }
 # endif // IMPL_DELTAS_AND_INIT_ZERO_DELTA_BEFORE_HUFF_ENCODING
       
-      NSData *decodedDeltas = [Huffman decodeSignedByteDeltas:deltasData];
+      NSData *decodedDeltas = [Eliasg decodeSignedByteDeltas:deltasData];
       NSAssert([decodedDeltas isEqualToData:blockData], @"decoded deltas");
 #endif // DEBUG
     }
@@ -508,15 +507,6 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
     _blockInitData = [NSData dataWithData:mBlockInitData];
 #endif
   }
-#else
-  // Store init data as all zeros
-  NSMutableData *mBlockInitData = [NSMutableData dataWithCapacity:(blockWidth * blockHeight)];
-  for ( int blocki = 0; blocki < (blockWidth * blockHeight); blocki++ ) {
-    uint8_t zeroByte = 0;
-    [mBlockInitData appendBytes:&zeroByte length:1];
-  }
-  _blockInitData = [NSData dataWithData:mBlockInitData];
-#endif // IMPL_DELTAS_BEFORE_HUFF_ENCODING
   
   if ((0)) {
     //        for (int i = 0; i < outBlockOrderSymbolsNumBytes; i++) {
@@ -573,33 +563,24 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
   
   assert((outBlockOrderSymbolsNumBytes % (blockDim * blockDim)) == 0);
   
-  [Huffman encodeHuffman:outBlockOrderSymbolsPtr
-              inNumBytes:outBlockOrderSymbolsNumBytes
-           outFileHeader:outFileHeader
-          outCanonHeader:outCanonHeader
-            outHuffCodes:outHuffCodes
-      outBlockBitOffsets:outBlockBitOffsets
-                   width:width
-                  height:height
-                blockDim:blockDim];
+  [Eliasg encodeBits:outBlockOrderSymbolsPtr
+          inNumBytes:outBlockOrderSymbolsNumBytes
+            outCodes:outCodes
+  outBlockBitOffsets:outBlockBitOffsets
+               width:width
+              height:height
+            blockDim:blockDim];
   
   if ((1)) {
     printf("inNumBytes   %8d\n", outBlockOrderSymbolsNumBytes);
-    printf("outNumBytes  %8d\n", (int)outHuffCodes.length);
+    printf("outNumBytes  %8d\n", (int)outCodes.length);
   }
-  
-  // Reparse the canonical header to load symbol table info
-  
-  [Huffman parseCanonicalHeader:outCanonHeader];
   
   // FIXME: allocate huffman encoded bytes with no copy option to share existing mem?
   // Otherise allocate and provide way to read bytes directly into allocated buffer.
   
-  uint8_t *encodedSymbolsPtr = outHuffCodes.mutableBytes;
-  int encodedSymbolsNumBytes = (int) outHuffCodes.length;
-  
-  // Add 2 more empty bytes to account for read ahead
-  encodedSymbolsNumBytes += 2;
+  uint8_t *encodedSymbolsPtr = outCodes.mutableBytes;
+  int encodedSymbolsNumBytes = (int) outCodes.length;
   
   // Allocate a new buffer that accounts for read ahead space
   // and copy huffman encoded symbols into the allocated buffer.
@@ -623,6 +604,7 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
     fprintf(stdout, "done encodedSymbols\n");
   }
   
+    /*
   {
     const int table1BitNum = HUFF_TABLE1_NUM_BITS;
     const int table2BitNum = HUFF_TABLE2_NUM_BITS;
@@ -691,6 +673,8 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
     memcpy(_huffSymbolTable1.contents, table1.bytes, table1.length);
     memcpy(_huffSymbolTable2.contents, table2.bytes, table2.length);
   }
+     
+*/
   
   // Init memory buffer that holds bit offsets for each block
   

@@ -31,6 +31,35 @@ void EliasGamma_printBits16(unsigned int x, string tag)
     printf("\n");
 }
 
+// Optimized symbol bit width calculation, this logic
+// looks at a binary number like 0b00010101 and calculates
+// the number of trailing zeros leading up to the first 1 (MSB)
+// as 3 zeros -> 5 bits.
+
+static inline
+int
+EliasGamma_bitWidth(uint8_t symbol) {
+    // MSB
+    
+    // input to __builtin_clz is treated as unsigned
+    // 32 bit number, so always subtract 16.
+    unsigned int symbolPlusOne = ((unsigned int)symbol) + 1;
+#if defined(DEBUG)
+    assert(symbolPlusOne >= 1 && symbolPlusOne <= 256);
+#endif // DEBUG
+    unsigned int countOfZeros = __builtin_clz(symbolPlusOne) - 16;
+#if defined(DEBUG)
+    assert(countOfZeros != 0);
+    assert(countOfZeros <= 15);
+#endif // DEBUG
+    unsigned int highBitPosition = 16 - countOfZeros - 1;
+#if defined(DEBUG)
+    assert(highBitPosition >= 0 && highBitPosition <= 9);
+#endif // DEBUG
+    int totalBits = highBitPosition + 1 + highBitPosition;
+    return totalBits;
+}
+
 class EliasGammaEncoder
 {
     public:
@@ -108,12 +137,6 @@ class EliasGammaEncoder
         // The maximum value that is acceptable is 256 or 2^8
         // which falls outside the first byte.
         
-        // FIXME: count leading zeros on 16 bit value ?
-        // int __builtin_clz
-        // Returns the number of leading 0-bits in x,
-        // starting at the most significant bit position.
-        // If x is 0, the result is undefined.
-        
         for (int i = 0; i < 9; i++) {
             if ((number >> i) & 0x1) {
                 highBitValue = i;
@@ -123,6 +146,17 @@ class EliasGammaEncoder
 #if defined(DEBUG)
         // In DEBUG mode, bits contains bits for this specific symbol.
         assert(highBitValue != -1);
+#endif // DEBUG
+        
+#if defined(DEBUG)
+        // Verify that this result matches EliasGamma_bitWidth() output
+        // by passing the original input numer.
+        {
+            int bitWidth = (highBitValue * 2) + 1;
+            int originalNumber = number - 1;
+            int expectedBitWidth = EliasGamma_bitWidth(originalNumber);
+            assert(bitWidth == expectedBitWidth);
+        }
 #endif // DEBUG
         
         return highBitValue;
@@ -243,15 +277,17 @@ class EliasGammaEncoder
     // encoded bytes so it is much faster than encoding.
     
     int numBits(uint8_t inByteNumber) {
-        uint32_t number = inByteNumber;
-        number += 1;
-#if defined(DEBUG)
-        assert(number >= 1 && number <= 256);
-#endif // DEBUG
-        int highBitValue = highBitPosition(number);
-        int lowBits = highBitValue;
-        int totalBits = highBitValue + 1 + lowBits;
-        return totalBits;
+        //        uint32_t number = inByteNumber;
+        //        number += 1;
+        //#if defined(DEBUG)
+        //        assert(number >= 1 && number <= 256);
+        //#endif // DEBUG
+        //        int highBitValue = highBitPosition(number);
+        //        int lowBits = highBitValue;
+        //        int totalBits = highBitValue + 1 + lowBits;
+        //        return totalBits;
+        
+        return EliasGamma_bitWidth(inByteNumber);
     }
     
     // Query the number of bits needed to store these symbols
@@ -511,4 +547,3 @@ class EliasGammaDecoderOpt16
 };
 
 #endif // elias_hpp
-

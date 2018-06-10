@@ -32,13 +32,7 @@ typedef struct
 typedef struct {
   uint8_t symbol;
   uint8_t bitWidth;
-} HuffLookupSymbol;
-
-// Fixed size 2048 byte table
-
-typedef struct {
-  HuffLookupSymbol table[HUFF_TABLE1_SIZE];
-} HuffLookupTable1;
+} VariableBitWidthSymbol;
 
 // Vertex Function
 vertex RasterizerData
@@ -124,23 +118,19 @@ samplingCropShader(RasterizerData in [[stage_in]],
 
 // A single huffman symbol decode step
 
-HuffLookupSymbol
-huffDecodeSymbol(
-                 const device uint8_t *huffBuff,
-                 constant HuffLookupTable1 & huffSymbolTable1,
-                 const device HuffLookupSymbol *huffSymbolTable2,
+VariableBitWidthSymbol
+eliasgDecodeSymbol(
+                 const device uint8_t *bitBuff,
                  const uint currentNumBits)
 {
-  const ushort table1BitNum = HUFF_TABLE1_NUM_BITS;
-  const ushort table2BitNum = HUFF_TABLE2_NUM_BITS;
   const ushort numBitsInByte = 8;
   int numBytesRead = int(currentNumBits / numBitsInByte);
   ushort numBitsReadMod8 = (currentNumBits % numBitsInByte);
   
   ushort inputBitPattern = 0;
-  ushort b0 = huffBuff[numBytesRead];
-  ushort b1 = huffBuff[numBytesRead+1];
-  ushort b2 = huffBuff[numBytesRead+2];
+  ushort b0 = bitBuff[numBytesRead];
+  ushort b1 = bitBuff[numBytesRead+1];
+  ushort b2 = bitBuff[numBytesRead+2];
   
   // Left shift the already consumed bits off left side of b0
   b0 <<= numBitsReadMod8;
@@ -153,29 +143,20 @@ huffDecodeSymbol(
   // Right shift b2 to throw out unused bits
   b2 >>= (8 - numBitsReadMod8);
   inputBitPattern |= b2;
+    
+  ushort countOfZeros = clz(inputBitPattern);
+    
+  // Shift left to place MSB of symbol at the MSB of 16 bit register
+  ushort shiftedLeft = inputBitPattern << countOfZeros;
   
-  // Split input 16 bit pattern into table1 and table2 pattern
-  
-  ushort table1Pattern = inputBitPattern >> (16 - table1BitNum);
-  ushort table2Pattern = inputBitPattern & (0xFFFF >> (16 - table2BitNum));
-  
-  // Lookup 16 bit symbol in left justified table
-  
-  HuffLookupSymbol hls = huffSymbolTable1.table[table1Pattern];
+  // Shift right to place MSB of value at correct bit offset
+  ushort shiftedRight = shiftedLeft >> (16 - (countOfZeros+1));
 
-  if (hls.bitWidth == 0) {
-    const ushort table2NumElements = pow(2.0h, table2BitNum);
-    ushort offset = hls.symbol * table2NumElements;
-    ushort offsetPlusPattern = table2Pattern + offset;
-    hls = huffSymbolTable2[offsetPlusPattern];
-  }
-
-//  const ushort table2NumElements = pow(2.0h, table2BitNum);
-//  ushort offset = hls.symbol * table2NumElements;
-//  ushort offsetPlusPattern = table2Pattern + offset;
-//  hls = (hls.bitWidth == 0) ? huffSymbolTable2[offsetPlusPattern] : hls;
+  VariableBitWidthSymbol vws;
+  vws.symbol = (shiftedRight - 1);;
+  vws.bitWidth = ((countOfZeros >> 1) + 1);
   
-  return hls;
+  return vws;
 }
 
 // Given coordinates, calculate relative coordinates in a 2d grid
@@ -239,31 +220,23 @@ ushort2 calc_gid_from_frag_norm_coord(const ushort2 dims, const float2 textureCo
 
 // This function implements a single step of a huffman symbol decode operation
 
-half decode_one_huffman_symbol(
+half decode_one_eliasg_symbol(
                                  const uint numBitsReadForBlockRoot,
                                  thread ushort & numBitsRead,
                                  thread ushort & prevSymbol,
-                                 const device uint8_t *huffBuff,
-                                 constant HuffLookupTable1 & huffSymbolTable1,
-                                 const device HuffLookupSymbol *huffSymbolTable2)
+                                 const device uint8_t *bitBuff)
 {
   uint currentNumBits = numBitsReadForBlockRoot + numBitsRead;
   
   // Lookup 16 bit symbol in left justified table
   
-  HuffLookupSymbol hls = huffDecodeSymbol(
-                                          huffBuff,
-                                          huffSymbolTable1,
-                                          huffSymbolTable2,
-                                          currentNumBits);
-  numBitsRead += hls.bitWidth;
+  VariableBitWidthSymbol vws = eliasgDecodeSymbol(
+                                                  bitBuff,
+                                                  currentNumBits);
+  numBitsRead += vws.bitWidth;
   
-#if defined(IMPL_DELTAS_BEFORE_HUFF_ENCODING)
-  ushort outSymbol = (prevSymbol + hls.symbol) & 0xFF;
+  ushort outSymbol = (prevSymbol + vws.symbol) & 0xFF;
   prevSymbol = outSymbol;
-#else
-  ushort outSymbol = hls.symbol;
-#endif // IMPL_DELTAS_BEFORE_HUFF_ENCODING
   
   return outSymbol/255.0h;
 }
@@ -272,7 +245,7 @@ half decode_one_huffman_symbol(
 // (X,Y) location to 12 byte symbols in 3 BGRA pixels. This
 // shader will need to be invoked 4 times to render 48 pixels.
 
-struct HuffFragmentOutput12 {
+struct FragmentOutput12 {
   half4 c0 [[ color(0) ]];
   half4 c1 [[ color(1) ]];
   half4 c2 [[ color(2) ]];
@@ -282,27 +255,25 @@ struct HuffFragmentOutput12 {
 // A 16 symbol huff render stage will map a single output pixel
 // (X,Y) location to 16 byte symbols.
 
-struct HuffFragmentOutput16 {
+struct FragmentOutput16 {
   half4 c0 [[ color(0) ]];
   half4 c1 [[ color(1) ]];
   half4 c2 [[ color(2) ]];
   half4 c3 [[ color(3) ]];
 };
 
-fragment HuffFragmentOutput12
+fragment FragmentOutput12
 huffFragmentShaderB8W12(RasterizerData in [[stage_in]],
                         texture2d<half, access::read> inBitsReadTexture  [[texture(0)]],
                         const device uint32_t *blockStartBitOffsetsPtr [[ buffer(0) ]],
-                        const device uint8_t *huffBuff [[ buffer(1) ]],
-                        constant HuffLookupTable1 & huffSymbolTable1 [[ buffer(2) ]],
-                        const device HuffLookupSymbol *huffSymbolTable2 [[ buffer(3) ]],
-                        constant RenderTargetDimensionsAndBlockDimensionsUniform & rtd [[ buffer(4) ]]
+                        const device uint8_t *bitBuff [[ buffer(1) ]],
+                        constant RenderTargetDimensionsAndBlockDimensionsUniform & rtd [[ buffer(2) ]]
                         )
 {
   const ushort numWholeBlocksInWidth = rtd.blockWidth;
   ushort2 gid = calc_gid_from_frag_norm_coord(ushort2(rtd.blockWidth, rtd.blockHeight), in.textureCoordinate);
 
-  HuffFragmentOutput12 fragOut;
+  FragmentOutput12 fragOut;
   
   // Calculate blocki in terms of the number of whole blocks in the output texture
   // where each pixel corresponds to one block.
@@ -321,37 +292,34 @@ huffFragmentShaderB8W12(RasterizerData in [[stage_in]],
   
   ushort numBitsRead = bitsReadPrev;
   
-#if defined(IMPL_DELTAS_BEFORE_HUFF_ENCODING)
   ushort prevSymbol = round(bitsRead4.r  * 255.0h);
-#else
-#endif // IMPL_DELTAS_BEFORE_HUFF_ENCODING
   
   half4 hc;
   
   // renderStep = 0,1,2,3
   
-  hc.b = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.g = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.r = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.a = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
+  hc.b = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.g = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.r = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.a = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
   
   fragOut.c0 = hc;
   
   // renderStep = 4,5,6,7
   
-  hc.b = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.g = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.r = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.a = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
+  hc.b = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.g = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.r = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.a = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
   
   fragOut.c1 = hc;
 
   // renderStep = 8,9,10,11
   
-  hc.b = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.g = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.r = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.a = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
+  hc.b = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.g = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.r = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.a = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
 
   fragOut.c2 = hc;
 
@@ -365,20 +333,18 @@ huffFragmentShaderB8W12(RasterizerData in [[stage_in]],
   return fragOut;
 }
 
-fragment HuffFragmentOutput16
+fragment FragmentOutput16
 huffFragmentShaderB8W16(RasterizerData in [[stage_in]],
                         texture2d<half, access::read> inBitsReadTexture  [[texture(0)]],
                         const device uint32_t *blockStartBitOffsetsPtr [[ buffer(0) ]],
-                        const device uint8_t *huffBuff [[ buffer(1) ]],
-                        constant HuffLookupTable1 & huffSymbolTable1 [[ buffer(2) ]],
-                        const device HuffLookupSymbol *huffSymbolTable2 [[ buffer(3) ]],
-                        constant RenderTargetDimensionsAndBlockDimensionsUniform & rtd [[ buffer(4) ]]
+                        const device uint8_t *bitBuff [[ buffer(1) ]],
+                        constant RenderTargetDimensionsAndBlockDimensionsUniform & rtd [[ buffer(2) ]]
                         )
 {
   const ushort numWholeBlocksInWidth = rtd.blockWidth;
   ushort2 gid = calc_gid_from_frag_norm_coord(ushort2(rtd.blockWidth, rtd.blockHeight), in.textureCoordinate);
   
-  HuffFragmentOutput16 fragOut;
+  FragmentOutput16 fragOut;
   
   // Calculate blocki in terms of the number of whole blocks in the output texture
   // where each pixel corresponds to one block.
@@ -397,46 +363,43 @@ huffFragmentShaderB8W16(RasterizerData in [[stage_in]],
   
   ushort numBitsRead = bitsReadPrev;
   
-#if defined(IMPL_DELTAS_BEFORE_HUFF_ENCODING)
   ushort prevSymbol = round(bitsRead4.r  * 255.0h);
-#else
-#endif // IMPL_DELTAS_BEFORE_HUFF_ENCODING
   
   half4 hc;
   
   // renderStep = 0,1,2,3
   
-  hc.b = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.g = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.r = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.a = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
+  hc.b = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.g = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.r = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.a = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
   
   fragOut.c0 = hc;
   
   // renderStep = 4,5,6,7
   
-  hc.b = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.g = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.r = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.a = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
+  hc.b = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.g = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.r = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.a = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
   
   fragOut.c1 = hc;
   
   // renderStep = 8,9,10,11
   
-  hc.b = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.g = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.r = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.a = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
+  hc.b = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.g = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.r = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.a = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
   
   fragOut.c2 = hc;
 
   // renderStep = 12,13,14,15
   
-  hc.b = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.g = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.r = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
-  hc.a = decode_one_huffman_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, huffBuff, huffSymbolTable1, huffSymbolTable2);
+  hc.b = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.g = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.r = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
+  hc.a = decode_one_eliasg_symbol(numBitsReadForBlockRoot, numBitsRead, prevSymbol, bitBuff);
   
   fragOut.c3 = hc;
   
