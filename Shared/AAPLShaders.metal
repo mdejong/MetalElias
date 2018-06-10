@@ -116,7 +116,54 @@ samplingCropShader(RasterizerData in [[stage_in]],
   return outGrayscale;
 }
 
-// A single huffman symbol decode step
+// Single byte clz table implementation with
+// special case for clz(0) -> 8 to support
+// 9 bit maximum value with 8 bit input.
+
+constant
+static
+uint8_t clz_byte[256] = {
+    8, 7, 6, 6, 5, 5, 5, 5,
+    4, 4, 4, 4, 4, 4, 4, 4,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    2, 2, 2, 2, 2, 2, 2, 2,
+    2, 2, 2, 2, 2, 2, 2, 2,
+    2, 2, 2, 2, 2, 2, 2, 2,
+    2, 2, 2, 2, 2, 2, 2, 2,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0
+};
+
+ushort
+clz4Byte(uint8_t byteVal)
+{
+    return clz_byte[byteVal];
+}
+
+// A single symbol decode step
 
 VariableBitWidthSymbol
 eliasgDecodeSymbol(
@@ -144,7 +191,8 @@ eliasgDecodeSymbol(
   b2 >>= (8 - numBitsReadMod8);
   inputBitPattern |= b2;
     
-  ushort countOfZeros = clz(inputBitPattern);
+  //ushort countOfZeros = clz(inputBitPattern);
+  ushort countOfZeros = clz4Byte(uint8_t(inputBitPattern >> 8));
     
   // Shift left to place MSB of symbol at the MSB of 16 bit register
   ushort shiftedLeft = inputBitPattern << countOfZeros;
