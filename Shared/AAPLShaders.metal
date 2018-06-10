@@ -154,7 +154,7 @@ eliasgDecodeSymbol(
 
   VariableBitWidthSymbol vws;
   vws.symbol = (shiftedRight - 1);;
-  vws.bitWidth = ((countOfZeros >> 1) + 1);
+  vws.bitWidth = ((countOfZeros << 1) + 1); // countOfZeros ((countOfZeros * 2) + 1);
   
   return vws;
 }
@@ -218,6 +218,20 @@ ushort2 calc_gid_from_frag_norm_coord(const ushort2 dims, const float2 textureCo
   return gid;
 }
 
+// FIXME: not optimal since this depends on conditional code path
+
+short
+offset_to_num_neg(ushort value) {
+    if (value == 0) {
+        return value;
+    } else if ((value & 0x1) != 0) {
+        // odd numbers are negative values
+        return ((int)value + 1) / -2;
+    } else {
+        return value / 2;
+    }
+}
+
 // This function implements a single step of a huffman symbol decode operation
 
 half decode_one_eliasg_symbol(
@@ -235,7 +249,7 @@ half decode_one_eliasg_symbol(
                                                   currentNumBits);
   numBitsRead += vws.bitWidth;
   
-  ushort outSymbol = (prevSymbol + vws.symbol) & 0xFF;
+  ushort outSymbol = (prevSymbol + offset_to_num_neg(vws.symbol)) & 0xFF;
   prevSymbol = outSymbol;
   
   return outSymbol/255.0h;

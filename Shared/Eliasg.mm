@@ -3,16 +3,12 @@
 
 #import "Eliasg.h"
 
-#import "EliasgUtil.hpp"
-
 #include <assert.h>
 
 #include <string>
 #include <vector>
 #include <unordered_map>
 #include <cstdint>
-
-#include "EliasgEncoder.hpp"
 
 #import "elias.hpp"
 

@@ -512,7 +512,7 @@ class EliasGammaDecoderOpt16
             // 32 bit number, so always subtract 16.
             countOfZeros = __builtin_clz((unsigned int)inputBitPattern) - 16;
             
-            bitsThisSymbol = (countOfZeros * 2 + 1);
+            bitsThisSymbol = ((countOfZeros << 1) + 1); // ((countOfZeros * 2) + 1)
             currentNumBits += bitsThisSymbol;
             
             // Shift left to place MSB of value at the MSB of

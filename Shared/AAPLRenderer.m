@@ -107,12 +107,8 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
 
   id<MTLBuffer> _blockStartBitOffsets;
   
-  // The Metal buffer where encoded huffman bits are stored
-  id<MTLBuffer> _huffBuff;
-
-  // The Metal buffer where huffman symbol lookup table is stored
-  id<MTLBuffer> _huffSymbolTable1;
-  id<MTLBuffer> _huffSymbolTable2;
+  // The Metal buffer where encoded bits are stored
+  id<MTLBuffer> _bitsBuff;
   
     // The number of vertices in our vertex buffer
     NSUInteger _numVertices;
@@ -366,7 +362,7 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
   return;
 }
 
-- (void) setupHuffmanEncoding
+- (void) setupEliasgEncoding
 {
   unsigned int width = self->renderWidth;
   unsigned int height = self->renderHeight;
@@ -376,6 +372,23 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
   
   NSMutableData *outCodes = [NSMutableData data];
   NSMutableData *outBlockBitOffsets = [NSMutableData data];
+    
+  if ((0)) {
+        printf("image order for %5d x %5d image\n", width, height);
+      
+      uint8_t* inBytes = (uint8_t*)_imageInputBytes.bytes;
+      
+        for ( int row = 0; row < height; row++ ) {
+          for ( int col = 0; col < width; col++ ) {
+              uint8_t byteVal = inBytes[(row * width) + col];
+              printf("0x%02X ", byteVal);
+          }
+            
+          printf("\n");
+        }
+        
+        printf("image order done\n");
+    }
   
   // To encode symbols with huffman block encoding, the order of the symbols
   // needs to be broken up so that the input ordering is in terms of blocks and
@@ -406,7 +419,7 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
     //          printf("outBlockOrderSymbolsPtr[%5i] = %d\n", i, outBlockOrderSymbolsPtr[i]);
     //        }
     
-    printf("block order\n");
+    printf("block order for %5d blocks\n", (blockWidth * blockHeight));
     
     for ( int blocki = 0; blocki < (blockWidth * blockHeight); blocki++ ) {
       printf("block %5d : ", blocki);
@@ -511,7 +524,7 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
     //          printf("outBlockOrderSymbolsPtr[%5i] = %d\n", i, outBlockOrderSymbolsPtr[i]);
     //        }
     
-    printf("block order\n");
+    printf("deltas block order\n");
     
     for ( int blocki = 0; blocki < (blockWidth * blockHeight); blocki++ ) {
       printf("block %5d : ", blocki);
@@ -524,10 +537,10 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
       printf("\n");
     }
     
-    printf("block order done\n");
+    printf("deltas block order done\n");
   }
     
-    if ((1)) {
+    if ((0)) {
         NSString *tmpDir = NSTemporaryDirectory();
         NSString *path = [tmpDir stringByAppendingPathComponent:@"block_deltas.bytes"];
         [outBlockOrderSymbolsData writeToFile:path atomically:TRUE];
@@ -585,10 +598,10 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
   // Allocate a new buffer that accounts for read ahead space
   // and copy huffman encoded symbols into the allocated buffer.
   
-  _huffBuff = [_device newBufferWithLength:encodedSymbolsNumBytes
+  _bitsBuff = [_device newBufferWithLength:encodedSymbolsNumBytes
                                    options:MTLResourceStorageModeShared];
   
-  memcpy(_huffBuff.contents, encodedSymbolsPtr, encodedSymbolsNumBytes);
+  memcpy(_bitsBuff.contents, encodedSymbolsPtr, encodedSymbolsNumBytes);
   
   if ((0)) {
     // Encoded huffman symbols as hex?
@@ -603,78 +616,6 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
     
     fprintf(stdout, "done encodedSymbols\n");
   }
-  
-    /*
-  {
-    const int table1BitNum = HUFF_TABLE1_NUM_BITS;
-    const int table2BitNum = HUFF_TABLE2_NUM_BITS;
-    
-    NSMutableData *table1 = [NSMutableData data];
-    NSMutableData *table2 = [NSMutableData data];
-    
-    [Huffman generateSplitLookupTables:table1BitNum
-                         table2NumBits:table2BitNum
-                                table1:table1
-                                table2:table2];
-    
-    // Invoke split table decoding logic to check that the generated tables
-    // can be read to regenerate the original input.
-    
-#if defined(DEBUG)
-    
-    HuffLookupSymbol *codeLookupTablePtr1 = (HuffLookupSymbol *) table1.bytes;
-    assert(codeLookupTablePtr1);
-    HuffLookupSymbol *codeLookupTablePtr2 = (HuffLookupSymbol *) table2.bytes;
-    assert(codeLookupTablePtr1);
-    
-    NSMutableData *mDecodedBlockOrderSymbols = [NSMutableData data];
-    [mDecodedBlockOrderSymbols setLength:outBlockOrderSymbolsNumBytes];
-    uint8_t *decodedBlockOrderSymbolsPtr = (uint8_t *) mDecodedBlockOrderSymbols.mutableBytes;
-    
-    uint8_t *huffSymbolsWithPadding = (uint8_t *) _huffBuff.contents;
-    int huffSymbolsWithPaddingNumBytes = encodedSymbolsNumBytes;
-    
-    NSMutableData *mDecodedBitOffsetData = [NSMutableData data];
-    [mDecodedBitOffsetData setLength:(outBlockOrderSymbolsNumBytes * sizeof(uint32_t))];
-    uint32_t *decodedBitOffsetPtr = (uint32_t *) mDecodedBitOffsetData.mutableBytes;
-    
-    [Huffman decodeHuffmanBitsFromTables:codeLookupTablePtr1
-                        huffSymbolTable2:codeLookupTablePtr2
-                            table1BitNum:table1BitNum
-                            table2BitNum:table2BitNum
-                      numSymbolsToDecode:outBlockOrderSymbolsNumBytes
-                                huffBuff:huffSymbolsWithPadding
-                               huffBuffN:huffSymbolsWithPaddingNumBytes
-                               outBuffer:decodedBlockOrderSymbolsPtr
-                          bitOffsetTable:decodedBitOffsetPtr
-#if defined(DecodeHuffmanBitsFromTablesCompareToOriginal)
-                           originalBytes:outBlockOrderSymbolsPtr
-#endif // DecodeHuffmanBitsFromTablesCompareToOriginal
-     ];
-    
-    int cmp = memcmp(decodedBlockOrderSymbolsPtr, outBlockOrderSymbolsPtr, outBlockOrderSymbolsNumBytes);
-    assert(cmp == 0);
-#endif // DEBUG
-    
-    // Allocate Metal buffers that hold symbol table 1 and 2
-    
-    const int table1Size = HUFF_TABLE1_SIZE; // aka pow(2, table1BitNum)
-    const int table2Size = (int)table2.length / sizeof(HuffLookupSymbol);
-    
-    _huffSymbolTable1 = [_device newBufferWithLength:table1Size*sizeof(HuffLookupSymbol)
-                                             options:MTLResourceStorageModeShared];
-    
-    _huffSymbolTable2 = [_device newBufferWithLength:table2Size*sizeof(HuffLookupSymbol)
-                                             options:MTLResourceStorageModeShared];
-    
-    assert(_huffSymbolTable1.length == table1.length);
-    assert(_huffSymbolTable2.length == table2.length);
-    
-    memcpy(_huffSymbolTable1.contents, table1.bytes, table1.length);
-    memcpy(_huffSymbolTable2.contents, table2.bytes, table2.length);
-  }
-     
-*/
   
   // Init memory buffer that holds bit offsets for each block
   
@@ -1047,7 +988,7 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
 //      free(inputSymbolsPtr);
 //      }
 
-      [self setupHuffmanEncoding];
+      [self setupEliasgEncoding];
       
       // Zero out pixels / set to known init state
       
@@ -1245,21 +1186,13 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
     
     // Read only buffer for huffman symbols and huffman lookup table
     
-    [renderEncoder setFragmentBuffer:_huffBuff
+    [renderEncoder setFragmentBuffer:_bitsBuff
                        offset:0
                       atIndex:1];
     
-    [renderEncoder setFragmentBuffer:_huffSymbolTable1
-                       offset:0
-                      atIndex:2];
-
-    [renderEncoder setFragmentBuffer:_huffSymbolTable2
-                              offset:0
-                             atIndex:3];
-    
     [renderEncoder setFragmentBuffer:_renderTargetDimensionsAndBlockDimensionsUniform
                               offset:0
-                             atIndex:4];
+                             atIndex:2];
 
     // Draw the 3 vertices of our triangle
     [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle
@@ -1322,21 +1255,13 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
       
       // Read only buffer for huffman symbols and huffman lookup table
       
-      [renderEncoder setFragmentBuffer:_huffBuff
+      [renderEncoder setFragmentBuffer:_bitsBuff
                                 offset:0
                                atIndex:1];
       
-      [renderEncoder setFragmentBuffer:_huffSymbolTable1
-                                offset:0
-                               atIndex:2];
-      
-      [renderEncoder setFragmentBuffer:_huffSymbolTable2
-                                offset:0
-                               atIndex:3];
-      
       [renderEncoder setFragmentBuffer:_renderTargetDimensionsAndBlockDimensionsUniform
                                 offset:0
-                               atIndex:4];
+                               atIndex:2];
       
       // Draw the 3 vertices of our triangle
       [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle
@@ -1398,21 +1323,13 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
       
       // Read only buffer for huffman symbols and huffman lookup table
       
-      [renderEncoder setFragmentBuffer:_huffBuff
+      [renderEncoder setFragmentBuffer:_bitsBuff
                                 offset:0
                                atIndex:1];
       
-      [renderEncoder setFragmentBuffer:_huffSymbolTable1
-                                offset:0
-                               atIndex:2];
-      
-      [renderEncoder setFragmentBuffer:_huffSymbolTable2
-                                offset:0
-                               atIndex:3];
-      
       [renderEncoder setFragmentBuffer:_renderTargetDimensionsAndBlockDimensionsUniform
                                 offset:0
-                               atIndex:4];
+                               atIndex:2];
       
       // Draw the 3 vertices of our triangle
       [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle
@@ -1474,21 +1391,13 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
       
       // Read only buffer for huffman symbols and huffman lookup table
       
-      [renderEncoder setFragmentBuffer:_huffBuff
+      [renderEncoder setFragmentBuffer:_bitsBuff
                                 offset:0
                                atIndex:1];
       
-      [renderEncoder setFragmentBuffer:_huffSymbolTable1
-                                offset:0
-                               atIndex:2];
-      
-      [renderEncoder setFragmentBuffer:_huffSymbolTable2
-                                offset:0
-                               atIndex:3];
-      
       [renderEncoder setFragmentBuffer:_renderTargetDimensionsAndBlockDimensionsUniform
                                 offset:0
-                               atIndex:4];
+                               atIndex:2];
       
       // Draw the 3 vertices of our triangle
       [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle
@@ -1550,21 +1459,13 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
       
       // Read only buffer for huffman symbols and huffman lookup table
       
-      [renderEncoder setFragmentBuffer:_huffBuff
+      [renderEncoder setFragmentBuffer:_bitsBuff
                                 offset:0
                                atIndex:1];
-      
-      [renderEncoder setFragmentBuffer:_huffSymbolTable1
-                                offset:0
-                               atIndex:2];
-      
-      [renderEncoder setFragmentBuffer:_huffSymbolTable2
-                                offset:0
-                               atIndex:3];
-      
+        
       [renderEncoder setFragmentBuffer:_renderTargetDimensionsAndBlockDimensionsUniform
                                 offset:0
-                               atIndex:4];
+                               atIndex:2];
       
       // Draw the 3 vertices of our triangle
       [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle
