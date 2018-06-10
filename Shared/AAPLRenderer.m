@@ -101,9 +101,9 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
     id<MTLBuffer> _renderTargetDimensionsAndBlockDimensionsUniform;
   
   // The Metal buffer stores the number of bits into the
-  // huffman codes buffer where the symbol at a given
-  // block begins. This table keeps the huffman codes
-  // tightly packed.
+  // variable length codes buffer where the symbol at a given
+  // block begins. This table keeps the codes
+  // tightly packed into bytes.
 
   id<MTLBuffer> _blockStartBitOffsets;
   
@@ -820,12 +820,12 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
         // Load the vertex function from the library
         id <MTLFunction> vertexFunction = [defaultLibrary newFunctionWithName:@"vertexShader"];
         
-        id <MTLFunction> fragmentFunction = [defaultLibrary newFunctionWithName:@"huffFragmentShaderB8W12"];
+        id <MTLFunction> fragmentFunction = [defaultLibrary newFunctionWithName:@"fragmentShaderB8W12"];
         assert(fragmentFunction);
         
         // Set up a descriptor for creating a pipeline state object
         MTLRenderPipelineDescriptor *pipelineStateDescriptor = [[MTLRenderPipelineDescriptor alloc] init];
-        pipelineStateDescriptor.label = @"Huffman Decode 12 Pipeline";
+        pipelineStateDescriptor.label = @"Decode 12 Pipeline";
         pipelineStateDescriptor.vertexFunction = vertexFunction;
         pipelineStateDescriptor.fragmentFunction = fragmentFunction;
         
@@ -853,12 +853,12 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
         id <MTLFunction> vertexFunction = [defaultLibrary newFunctionWithName:@"vertexShader"];
         assert(vertexFunction);
         
-        id <MTLFunction> fragmentFunction = [defaultLibrary newFunctionWithName:@"huffFragmentShaderB8W16"];
+        id <MTLFunction> fragmentFunction = [defaultLibrary newFunctionWithName:@"fragmentShaderB8W16"];
         assert(fragmentFunction);
         
         // Set up a descriptor for creating a pipeline state object
         MTLRenderPipelineDescriptor *pipelineStateDescriptor = [[MTLRenderPipelineDescriptor alloc] init];
-        pipelineStateDescriptor.label = @"Huffman Decode 16 Pipeline";
+        pipelineStateDescriptor.label = @"Decode 16 Pipeline";
         pipelineStateDescriptor.vertexFunction = vertexFunction;
         pipelineStateDescriptor.fragmentFunction = fragmentFunction;
         
@@ -944,50 +944,9 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
       
         // Create the command queue
         _commandQueue = [_device newCommandQueue];
-      
-      // Read input data and encode to huffman
-      
-//      renderFrame.renderBlockWidth = blockWidth;
-//      renderFrame.renderBlockHeight = blockHeight;
-      
-//      int allocatedSymbolsPtr = 0;
-//
-//      uint8_t inputSymbolsPtr[] = {
-//        0,  1,  4, 0,
-//        2,  3,  5, 0,
-//        6,  7, 10, 0,
-//        8,  9, 11, 0
-//      };
-  
-//#if defined(DEBUG)
-//      _render_pass_saved_expected = renderFrame.render_pass_saved_expected;
-//#endif // DEBUG
-      
-//      int inputSymbolsNumBytes = sizeof(inputSymbolsPtr) / sizeof(uint8_t);
-      
-      /*
-      
-       int allocatedSymbolsPtr = 1;
-      const int inputSymbolsNumBytes = 8 * 8;
-      uint8_t *inputSymbolsPtr = malloc(inputSymbolsNumBytes);
-      
-      for ( int i = 0; i < inputSymbolsNumBytes; i++ ) {
-        int val = i & 0xFF;
-        inputSymbolsPtr[i] = val;
-      }
-       
-      */
-       
-      //assert(inputSymbolsNumBytes == (width * height));
-      
-      //_imageInputBytes = [NSData dataWithBytes:inputSymbolsPtr length:inputSymbolsNumBytes];
-      
+
       _imageInputBytes = renderFrame.inputData;
       
-//      if (allocatedSymbolsPtr) {
-//      free(inputSymbolsPtr);
-//      }
-
       [self setupEliasgEncoding];
       
       // Zero out pixels / set to known init state
@@ -1140,31 +1099,31 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
   // Render 0, write 12 symbols into 3 textures along with a bits consumed halfword
   
   {
-  MTLRenderPassDescriptor *huffRenderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+  MTLRenderPassDescriptor *renderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
   
-  if (huffRenderPassDescriptor != nil)
+  if (renderPassDescriptor != nil)
   {
-    huffRenderPassDescriptor.colorAttachments[0].texture = _render12C0R0;
-    huffRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionDontCare;
-    huffRenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+    renderPassDescriptor.colorAttachments[0].texture = _render12C0R0;
+    renderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+    renderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
 
-    huffRenderPassDescriptor.colorAttachments[1].texture = _render12C1R0;
-    huffRenderPassDescriptor.colorAttachments[1].loadAction = MTLLoadActionDontCare;
-    huffRenderPassDescriptor.colorAttachments[1].storeAction = MTLStoreActionStore;
+    renderPassDescriptor.colorAttachments[1].texture = _render12C1R0;
+    renderPassDescriptor.colorAttachments[1].loadAction = MTLLoadActionDontCare;
+    renderPassDescriptor.colorAttachments[1].storeAction = MTLStoreActionStore;
 
-    huffRenderPassDescriptor.colorAttachments[2].texture = _render12C2R0;
-    huffRenderPassDescriptor.colorAttachments[2].loadAction = MTLLoadActionDontCare;
-    huffRenderPassDescriptor.colorAttachments[2].storeAction = MTLStoreActionStore;
+    renderPassDescriptor.colorAttachments[2].texture = _render12C2R0;
+    renderPassDescriptor.colorAttachments[2].loadAction = MTLLoadActionDontCare;
+    renderPassDescriptor.colorAttachments[2].storeAction = MTLStoreActionStore;
 
-    huffRenderPassDescriptor.colorAttachments[3].texture = _render12C3R0;
-    huffRenderPassDescriptor.colorAttachments[3].loadAction = MTLLoadActionDontCare;
-    huffRenderPassDescriptor.colorAttachments[3].storeAction = MTLStoreActionStore;
+    renderPassDescriptor.colorAttachments[3].texture = _render12C3R0;
+    renderPassDescriptor.colorAttachments[3].loadAction = MTLLoadActionDontCare;
+    renderPassDescriptor.colorAttachments[3].storeAction = MTLStoreActionStore;
     
     id <MTLRenderCommandEncoder> renderEncoder =
-    [commandBuffer renderCommandEncoderWithDescriptor:huffRenderPassDescriptor];
-    renderEncoder.label = @"Huff12R0";
+    [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
+    renderEncoder.label = @"Render12R0";
     
-    [renderEncoder pushDebugGroup: @"Huff12R0"];
+    [renderEncoder pushDebugGroup: @"Render12R0"];
     
     // Set the region of the drawable to which we'll draw.
     
@@ -1183,8 +1142,6 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
     [renderEncoder setFragmentBuffer:_blockStartBitOffsets
                        offset:0
                       atIndex:0];
-    
-    // Read only buffer for huffman symbols and huffman lookup table
     
     [renderEncoder setFragmentBuffer:_bitsBuff
                        offset:0
@@ -1209,31 +1166,31 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
   // Render 1, write 12 symbols into 3 textures along with a bits consumed halfword
   
   {
-    MTLRenderPassDescriptor *huffRenderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+    MTLRenderPassDescriptor *renderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
     
-    if (huffRenderPassDescriptor != nil)
+    if (renderPassDescriptor != nil)
     {
-      huffRenderPassDescriptor.colorAttachments[0].texture = _render12C0R1;
-      huffRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionDontCare;
-      huffRenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+      renderPassDescriptor.colorAttachments[0].texture = _render12C0R1;
+      renderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+      renderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
       
-      huffRenderPassDescriptor.colorAttachments[1].texture = _render12C1R1;
-      huffRenderPassDescriptor.colorAttachments[1].loadAction = MTLLoadActionDontCare;
-      huffRenderPassDescriptor.colorAttachments[1].storeAction = MTLStoreActionStore;
+      renderPassDescriptor.colorAttachments[1].texture = _render12C1R1;
+      renderPassDescriptor.colorAttachments[1].loadAction = MTLLoadActionDontCare;
+      renderPassDescriptor.colorAttachments[1].storeAction = MTLStoreActionStore;
       
-      huffRenderPassDescriptor.colorAttachments[2].texture = _render12C2R1;
-      huffRenderPassDescriptor.colorAttachments[2].loadAction = MTLLoadActionDontCare;
-      huffRenderPassDescriptor.colorAttachments[2].storeAction = MTLStoreActionStore;
+      renderPassDescriptor.colorAttachments[2].texture = _render12C2R1;
+      renderPassDescriptor.colorAttachments[2].loadAction = MTLLoadActionDontCare;
+      renderPassDescriptor.colorAttachments[2].storeAction = MTLStoreActionStore;
       
-      huffRenderPassDescriptor.colorAttachments[3].texture = _render12C3R1;
-      huffRenderPassDescriptor.colorAttachments[3].loadAction = MTLLoadActionDontCare;
-      huffRenderPassDescriptor.colorAttachments[3].storeAction = MTLStoreActionStore;
+      renderPassDescriptor.colorAttachments[3].texture = _render12C3R1;
+      renderPassDescriptor.colorAttachments[3].loadAction = MTLLoadActionDontCare;
+      renderPassDescriptor.colorAttachments[3].storeAction = MTLStoreActionStore;
       
       id <MTLRenderCommandEncoder> renderEncoder =
-      [commandBuffer renderCommandEncoderWithDescriptor:huffRenderPassDescriptor];
-      renderEncoder.label = @"Huff12R1";
+      [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
+      renderEncoder.label = @"Render12R1";
       
-      [renderEncoder pushDebugGroup: @"Huff12R1"];
+      [renderEncoder pushDebugGroup: @"Render12R1"];
       
       // Set the region of the drawable to which we'll draw.
       
@@ -1252,8 +1209,6 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
       [renderEncoder setFragmentBuffer:_blockStartBitOffsets
                                 offset:0
                                atIndex:0];
-      
-      // Read only buffer for huffman symbols and huffman lookup table
       
       [renderEncoder setFragmentBuffer:_bitsBuff
                                 offset:0
@@ -1277,31 +1232,31 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
   // render 2
   
   {
-    MTLRenderPassDescriptor *huffRenderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+    MTLRenderPassDescriptor *renderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
     
-    if (huffRenderPassDescriptor != nil)
+    if (renderPassDescriptor != nil)
     {
-      huffRenderPassDescriptor.colorAttachments[0].texture = _render12C0R2;
-      huffRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionDontCare;
-      huffRenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+      renderPassDescriptor.colorAttachments[0].texture = _render12C0R2;
+      renderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+      renderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
       
-      huffRenderPassDescriptor.colorAttachments[1].texture = _render12C1R2;
-      huffRenderPassDescriptor.colorAttachments[1].loadAction = MTLLoadActionDontCare;
-      huffRenderPassDescriptor.colorAttachments[1].storeAction = MTLStoreActionStore;
+      renderPassDescriptor.colorAttachments[1].texture = _render12C1R2;
+      renderPassDescriptor.colorAttachments[1].loadAction = MTLLoadActionDontCare;
+      renderPassDescriptor.colorAttachments[1].storeAction = MTLStoreActionStore;
       
-      huffRenderPassDescriptor.colorAttachments[2].texture = _render12C2R2;
-      huffRenderPassDescriptor.colorAttachments[2].loadAction = MTLLoadActionDontCare;
-      huffRenderPassDescriptor.colorAttachments[2].storeAction = MTLStoreActionStore;
+      renderPassDescriptor.colorAttachments[2].texture = _render12C2R2;
+      renderPassDescriptor.colorAttachments[2].loadAction = MTLLoadActionDontCare;
+      renderPassDescriptor.colorAttachments[2].storeAction = MTLStoreActionStore;
       
-      huffRenderPassDescriptor.colorAttachments[3].texture = _render12C3R2;
-      huffRenderPassDescriptor.colorAttachments[3].loadAction = MTLLoadActionDontCare;
-      huffRenderPassDescriptor.colorAttachments[3].storeAction = MTLStoreActionStore;
+      renderPassDescriptor.colorAttachments[3].texture = _render12C3R2;
+      renderPassDescriptor.colorAttachments[3].loadAction = MTLLoadActionDontCare;
+      renderPassDescriptor.colorAttachments[3].storeAction = MTLStoreActionStore;
       
       id <MTLRenderCommandEncoder> renderEncoder =
-      [commandBuffer renderCommandEncoderWithDescriptor:huffRenderPassDescriptor];
-      renderEncoder.label = @"Huff12R2";
+      [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
+      renderEncoder.label = @"Render12R2";
       
-      [renderEncoder pushDebugGroup: @"Huff12R2"];
+      [renderEncoder pushDebugGroup: @"Render12R2"];
       
       // Set the region of the drawable to which we'll draw.
       
@@ -1320,8 +1275,6 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
       [renderEncoder setFragmentBuffer:_blockStartBitOffsets
                                 offset:0
                                atIndex:0];
-      
-      // Read only buffer for huffman symbols and huffman lookup table
       
       [renderEncoder setFragmentBuffer:_bitsBuff
                                 offset:0
@@ -1345,31 +1298,31 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
   // render 3
   
   {
-    MTLRenderPassDescriptor *huffRenderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+    MTLRenderPassDescriptor *renderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
     
-    if (huffRenderPassDescriptor != nil)
+    if (renderPassDescriptor != nil)
     {
-      huffRenderPassDescriptor.colorAttachments[0].texture = _render12C0R3;
-      huffRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionDontCare;
-      huffRenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+      renderPassDescriptor.colorAttachments[0].texture = _render12C0R3;
+      renderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+      renderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
       
-      huffRenderPassDescriptor.colorAttachments[1].texture = _render12C1R3;
-      huffRenderPassDescriptor.colorAttachments[1].loadAction = MTLLoadActionDontCare;
-      huffRenderPassDescriptor.colorAttachments[1].storeAction = MTLStoreActionStore;
+      renderPassDescriptor.colorAttachments[1].texture = _render12C1R3;
+      renderPassDescriptor.colorAttachments[1].loadAction = MTLLoadActionDontCare;
+      renderPassDescriptor.colorAttachments[1].storeAction = MTLStoreActionStore;
       
-      huffRenderPassDescriptor.colorAttachments[2].texture = _render12C2R3;
-      huffRenderPassDescriptor.colorAttachments[2].loadAction = MTLLoadActionDontCare;
-      huffRenderPassDescriptor.colorAttachments[2].storeAction = MTLStoreActionStore;
+      renderPassDescriptor.colorAttachments[2].texture = _render12C2R3;
+      renderPassDescriptor.colorAttachments[2].loadAction = MTLLoadActionDontCare;
+      renderPassDescriptor.colorAttachments[2].storeAction = MTLStoreActionStore;
       
-      huffRenderPassDescriptor.colorAttachments[3].texture = _render12C3R3;
-      huffRenderPassDescriptor.colorAttachments[3].loadAction = MTLLoadActionDontCare;
-      huffRenderPassDescriptor.colorAttachments[3].storeAction = MTLStoreActionStore;
+      renderPassDescriptor.colorAttachments[3].texture = _render12C3R3;
+      renderPassDescriptor.colorAttachments[3].loadAction = MTLLoadActionDontCare;
+      renderPassDescriptor.colorAttachments[3].storeAction = MTLStoreActionStore;
       
       id <MTLRenderCommandEncoder> renderEncoder =
-      [commandBuffer renderCommandEncoderWithDescriptor:huffRenderPassDescriptor];
-      renderEncoder.label = @"Huff12R3";
+      [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
+      renderEncoder.label = @"Render12R3";
       
-      [renderEncoder pushDebugGroup: @"Huff12R3"];
+      [renderEncoder pushDebugGroup: @"Render12R3"];
       
       // Set the region of the drawable to which we'll draw.
       
@@ -1388,8 +1341,6 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
       [renderEncoder setFragmentBuffer:_blockStartBitOffsets
                                 offset:0
                                atIndex:0];
-      
-      // Read only buffer for huffman symbols and huffman lookup table
       
       [renderEncoder setFragmentBuffer:_bitsBuff
                                 offset:0
@@ -1413,31 +1364,31 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
   // final render of 16 values
   
   {
-    MTLRenderPassDescriptor *huffRenderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+    MTLRenderPassDescriptor *renderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
     
-    if (huffRenderPassDescriptor != nil)
+    if (renderPassDescriptor != nil)
     {
-      huffRenderPassDescriptor.colorAttachments[0].texture = _render16C0;
-      huffRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionDontCare;
-      huffRenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+      renderPassDescriptor.colorAttachments[0].texture = _render16C0;
+      renderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+      renderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
       
-      huffRenderPassDescriptor.colorAttachments[1].texture = _render16C1;
-      huffRenderPassDescriptor.colorAttachments[1].loadAction = MTLLoadActionDontCare;
-      huffRenderPassDescriptor.colorAttachments[1].storeAction = MTLStoreActionStore;
+      renderPassDescriptor.colorAttachments[1].texture = _render16C1;
+      renderPassDescriptor.colorAttachments[1].loadAction = MTLLoadActionDontCare;
+      renderPassDescriptor.colorAttachments[1].storeAction = MTLStoreActionStore;
       
-      huffRenderPassDescriptor.colorAttachments[2].texture = _render16C2;
-      huffRenderPassDescriptor.colorAttachments[2].loadAction = MTLLoadActionDontCare;
-      huffRenderPassDescriptor.colorAttachments[2].storeAction = MTLStoreActionStore;
+      renderPassDescriptor.colorAttachments[2].texture = _render16C2;
+      renderPassDescriptor.colorAttachments[2].loadAction = MTLLoadActionDontCare;
+      renderPassDescriptor.colorAttachments[2].storeAction = MTLStoreActionStore;
       
-      huffRenderPassDescriptor.colorAttachments[3].texture = _render16C3;
-      huffRenderPassDescriptor.colorAttachments[3].loadAction = MTLLoadActionDontCare;
-      huffRenderPassDescriptor.colorAttachments[3].storeAction = MTLStoreActionStore;
+      renderPassDescriptor.colorAttachments[3].texture = _render16C3;
+      renderPassDescriptor.colorAttachments[3].loadAction = MTLLoadActionDontCare;
+      renderPassDescriptor.colorAttachments[3].storeAction = MTLStoreActionStore;
       
       id <MTLRenderCommandEncoder> renderEncoder =
-      [commandBuffer renderCommandEncoderWithDescriptor:huffRenderPassDescriptor];
-      renderEncoder.label = @"Huff16R4";
+      [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
+      renderEncoder.label = @"Render16R4";
       
-      [renderEncoder pushDebugGroup: @"Huff16R4"];
+      [renderEncoder pushDebugGroup: @"Render16R4"];
       
       // Set the region of the drawable to which we'll draw.
       
@@ -1456,8 +1407,6 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
       [renderEncoder setFragmentBuffer:_blockStartBitOffsets
                                 offset:0
                                atIndex:0];
-      
-      // Read only buffer for huffman symbols and huffman lookup table
       
       [renderEncoder setFragmentBuffer:_bitsBuff
                                 offset:0

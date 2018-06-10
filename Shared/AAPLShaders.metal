@@ -339,7 +339,7 @@ struct FragmentOutput16 {
 };
 
 fragment FragmentOutput12
-huffFragmentShaderB8W12(RasterizerData in [[stage_in]],
+fragmentShaderB8W12(RasterizerData in [[stage_in]],
                         texture2d<half, access::read> inBitsReadTexture  [[texture(0)]],
                         const device uint32_t *blockStartBitOffsetsPtr [[ buffer(0) ]],
                         const device uint8_t *bitBuff [[ buffer(1) ]],
@@ -410,7 +410,7 @@ huffFragmentShaderB8W12(RasterizerData in [[stage_in]],
 }
 
 fragment FragmentOutput16
-huffFragmentShaderB8W16(RasterizerData in [[stage_in]],
+fragmentShaderB8W16(RasterizerData in [[stage_in]],
                         texture2d<half, access::read> inBitsReadTexture  [[texture(0)]],
                         const device uint32_t *blockStartBitOffsetsPtr [[ buffer(0) ]],
                         const device uint8_t *bitBuff [[ buffer(1) ]],
