@@ -154,7 +154,7 @@ eliasgDecodeSymbol(
 
   VariableBitWidthSymbol vws;
   vws.symbol = (shiftedRight - 1);;
-  vws.bitWidth = ((countOfZeros << 1) + 1); // countOfZeros ((countOfZeros * 2) + 1);
+  vws.bitWidth = ((countOfZeros << 1) + 1); // ((countOfZeros * 2) + 1);
   
   return vws;
 }
@@ -218,18 +218,32 @@ ushort2 calc_gid_from_frag_norm_coord(const ushort2 dims, const float2 textureCo
   return gid;
 }
 
-// FIXME: not optimal since this depends on conditional code path
+//int32_t
+//offset_to_num_neg(uint32_t value) {
+//    if (value == 0) {
+//        return value;
+//    } else if ((value & 0x1) != 0) {
+//        // odd numbers are negative values
+//        return ((int)value + 1) / -2;
+//    } else {
+//        return value / 2;
+//    }
+//}
 
-short
+// branchless version
+
+ushort
 offset_to_num_neg(ushort value) {
-    if (value == 0) {
-        return value;
-    } else if ((value & 0x1) != 0) {
-        // odd numbers are negative values
-        return ((int)value + 1) / -2;
-    } else {
-        return value / 2;
-    }
+    ushort oneIfOddZeroIfEven = (value & 0x1);
+    // case 0    : val
+    // case even : (value / 2);
+    // case odd  : ((value+1) / 2)
+    ushort valDiv2 = (value + oneIfOddZeroIfEven) >> 1;
+    // even = 1 - 0 - 0 = 1
+    // odd  = 1 - 1 - 1 = -1
+    short negOneIfOddOneIfEven = 1 - oneIfOddZeroIfEven - oneIfOddZeroIfEven;
+    // Represent as unsigned byte
+    return ushort(valDiv2 * negOneIfOddOneIfEven);
 }
 
 // This function implements a single step of a huffman symbol decode operation
