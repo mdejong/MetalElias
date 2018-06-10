@@ -21,9 +21,8 @@ using namespace std;
 // Invoke huffman util module functions
 
 static inline
-bool encode(const uint8_t * bytes,
-            const int numBytes,
-            vector<uint8_t> & encodedBytes)
+vector<uint8_t> encode(const uint8_t * bytes,
+            const int numBytes)
 {
     EliasGammaEncoder encoder;
     
@@ -31,20 +30,17 @@ bool encode(const uint8_t * bytes,
     encoder.emitMSB = true;
     encoder.encode(bytes, numBytes);
     
-    // copy vector of bytes to output vector
-    encodedBytes = encoder.bytes;
-    
-    return true;
+    return std::move(encoder.bytes);
 }
 
 static inline
-bool decode(const vector<uint8_t> & encodedBytes,
+bool decode(const uint8_t *encodedBitsPtr,
             const unsigned int numSymbols,
             vector<uint8_t> & symbols)
 {
     EliasGammaDecoderOpt16 decoder;
     
-    decoder.decode(encodedBytes,
+    decoder.decode(encodedBitsPtr,
                    numSymbols,
                    symbols);
     
@@ -55,18 +51,22 @@ bool decode(const vector<uint8_t> & encodedBytes,
 // the symbol width added to a running counter of the offset
 // into a buffer.
 
+// FIXME: would be more optimal to generate a table of just the block
+// offsets instead of all of the symbols in a table.
+
 static inline
-vector<uint32_t> generateBitOffsets(const vector<uint8_t> & symbols)
+vector<uint32_t> generateBitOffsets(const uint8_t * symbols, int numSymbols)
 {
     vector<uint32_t> bitOffsets;
-    bitOffsets.reserve(symbols.size());
+    bitOffsets.reserve(numSymbols);
     
     unsigned int offset = 0;
     
     EliasGammaEncoder encoder;
     
-    for ( uint32_t symbol : symbols ) {
+    for ( int i = 0; i < numSymbols; i++ ) {
         bitOffsets.push_back(offset);
+        uint8_t symbol = symbols[i];
         uint32_t bitWidth = encoder.numBits(symbol);
         offset += bitWidth;
     }
@@ -213,21 +213,40 @@ pixelpack_int8_to_offset_uint8(int8_t value)
              height:(int)height
            blockDim:(int)blockDim
 {
-//  vector<uint8_t> inBytesVec(inNumBytes);
-//  memcpy(inBytesVec.data(), inBytes, inNumBytes);
-
-  vector<uint8_t> outBytesVec;
-  outBytesVec.reserve(inNumBytes);
-
-  bool result = encode(inBytes, inNumBytes, outBytesVec);
+  vector<uint8_t> outBytesVec = encode(inBytes, inNumBytes);
     
   {
       // Copy from outBytesVec to outCodes
       NSMutableData *mData = outCodes;
-      auto & inVec = outBytesVec;
-      int numBytes = (int)(inVec.size() * sizeof(uint8_t));
+      int numBytes = (int)(outBytesVec.size() * sizeof(uint8_t));
       [mData setLength:numBytes];
-      memcpy(mData.mutableBytes, inVec.data(), numBytes);
+      memcpy(mData.mutableBytes, outBytesVec.data(), numBytes);
+  }
+    
+  // Generate bit width lookup table from original input symbols
+  vector<uint32_t> offsetsVec = generateBitOffsets(inBytes, inNumBytes);
+
+  // The outBlockBitOffsets output contains bit offsets of the start
+  // of each block, so skip over (blockDim * blockDim) offsets on
+  // each lookup.
+
+  const int maxOffset = (width * height);
+  const int blockN = (blockDim * blockDim);
+    
+  vector<uint32_t> blockStartOffsetsVec;
+  blockStartOffsetsVec.reserve(maxOffset / blockN);
+
+  for (int offset = 0; offset < maxOffset; offset += blockN ) {
+      int blockStartBitOffset = offsetsVec[offset];
+      blockStartOffsetsVec.push_back(blockStartBitOffset);
+  }
+
+  {
+      int numBytes = (int) (blockStartOffsetsVec.size() * sizeof(uint32_t));
+      if ((int)outBlockBitOffsets.length != numBytes) {
+          [outBlockBitOffsets setLength:numBytes];
+      }
+      memcpy(outBlockBitOffsets.mutableBytes, blockStartOffsetsVec.data(), numBytes);
   }
   
   return;
@@ -243,16 +262,14 @@ pixelpack_int8_to_offset_uint8(int8_t value)
           outBuffer:(uint8_t*)outBuffer
      bitOffsetTable:(uint32_t*)bitOffsetTable
 {
-    // FIXME: avoid suboptimal memcpy()
-    
-    vector<int8_t> inBytes;
-    inBytes.resize(bitBuffN);
-    memcpy(inBytes.data(), bitBuff, bitBuffN);
-
     vector<uint8_t> outVec;
     outVec.reserve(numSymbolsToDecode);
     
-    decode(inBytes, numSymbolsToDecode, outVec);
+    decode(bitBuff, numSymbolsToDecode, outVec);
+    // FIXME: how should decode method return the result data?
+    // Since size of buffer is know, this module can assume
+    // that allocated buffer is large enough to handle known
+    // number of symbols.
     memcpy(outBuffer, outVec.data(), numSymbolsToDecode);
 }
 

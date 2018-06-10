@@ -55,6 +55,11 @@ EliasGamma_bitWidth(uint8_t symbol) {
     unsigned int highBitPosition = 16 - countOfZeros - 1;
 #if defined(DEBUG)
     assert(highBitPosition >= 0 && highBitPosition <= 9);
+    if (symbolPlusOne == 256) {
+        assert(highBitPosition == 8);
+    } else {
+        assert(highBitPosition >= 0 && highBitPosition <= 7);
+    }
 #endif // DEBUG
     int totalBits = highBitPosition + 1 + highBitPosition;
     return totalBits;
@@ -436,7 +441,7 @@ class EliasGammaDecoderOpt16
     // from inBytesVec with 16 bit register implementation that counts
     // leading zeros for branchless operation.
     
-    void decode(const vector<uint8_t> & inBytesVec,
+    void decode(const uint8_t * encodedBitsPtr,
                 unsigned int numSymbols,
                 vector<uint8_t> & outBytesVec)
     {
@@ -465,13 +470,13 @@ class EliasGammaDecoderOpt16
                 printf("currentNumBits %d : numBitsReadMod8 %d\n", numBytesRead, numBitsReadMod8);
             }
             
-            uint16_t inputBitPattern = 0;
+            unsigned int inputBitPattern = 0; // 16 bits used
             
             // Unconditionally read 3 bytes
             
-            uint32_t b0 = inBytesVec[numBytesRead];
-            uint32_t b1 = inBytesVec[numBytesRead+1];
-            uint32_t b2 = inBytesVec[numBytesRead+2];
+            unsigned int b0 = encodedBitsPtr[numBytesRead];
+            unsigned int b1 = encodedBitsPtr[numBytesRead+1];
+            unsigned int b2 = encodedBitsPtr[numBytesRead+2];
             
             if (debug) {
                 printf("read offsets : %d %d %d\n", numBytesRead, numBytesRead+1, numBytesRead+2);

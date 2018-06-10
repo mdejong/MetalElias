@@ -124,7 +124,7 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
   
   NSData *_huffData;
 
-  NSData *_huffInputBytes;
+  NSData *_imageInputBytes;
 
   NSData *_blockByBlockReorder;
 
@@ -374,8 +374,6 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
   unsigned int blockWidth = self->renderBlockWidth;
   unsigned int blockHeight = self->renderBlockHeight;
   
-//  NSMutableData *outFileHeader = [NSMutableData data];
-//  NSMutableData *outCanonHeader = [NSMutableData data];
   NSMutableData *outCodes = [NSMutableData data];
   NSMutableData *outBlockBitOffsets = [NSMutableData data];
   
@@ -393,7 +391,7 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
   uint8_t *outBlockOrderSymbolsPtr = (uint8_t *) outBlockOrderSymbolsData.bytes;
   
   [Util splitIntoBlocksOfSize:blockDim
-                      inBytes:(uint8_t*)_huffInputBytes.bytes
+                      inBytes:(uint8_t*)_imageInputBytes.bytes
                      outBytes:outBlockOrderSymbolsPtr
                         width:width
                        height:height
@@ -424,7 +422,7 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
     printf("block order done\n");
   }
   
-  if ((1)) {
+  if ((1)) @autoreleasepool {
     // byte deltas
     
     NSMutableArray *mBlocks = [NSMutableArray array];
@@ -491,7 +489,7 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
 #endif // DEBUG
     }
     
-    // Write delta values back over outBlockOrderSymbolsPtr
+    // Write delta values back over outBlockOrderSymbolsPtr memory
     
     int outWritei = 0;
     
@@ -544,8 +542,10 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
         
         for (int i = 0; i < bytePtrLength; i++) {
             uint8_t byteVal = bytePtr[i];
-            uint8_t unsignedByteVal = pixelpack_int8_to_offset_uint8(byteVal);
-            [mData appendBytes:&unsignedByteVal length:1];
+            // already converted to zerod deltas
+            //uint8_t unsignedByteVal = pixelpack_int8_to_offset_uint8(byteVal);
+            //[mData appendBytes:&unsignedByteVal length:1];
+            [mData appendBytes:&byteVal length:1];
         }
         
         NSString *path2 = [tmpDir stringByAppendingPathComponent:@"block_deltas_unsigned.bytes"];
@@ -588,7 +588,7 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
   _huffBuff = [_device newBufferWithLength:encodedSymbolsNumBytes
                                    options:MTLResourceStorageModeShared];
   
-  memcpy(_huffBuff.contents, encodedSymbolsPtr, encodedSymbolsNumBytes-2);
+  memcpy(_huffBuff.contents, encodedSymbolsPtr, encodedSymbolsNumBytes);
   
   if ((0)) {
     // Encoded huffman symbols as hex?
@@ -1039,9 +1039,9 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
        
       //assert(inputSymbolsNumBytes == (width * height));
       
-      //_huffInputBytes = [NSData dataWithBytes:inputSymbolsPtr length:inputSymbolsNumBytes];
+      //_imageInputBytes = [NSData dataWithBytes:inputSymbolsPtr length:inputSymbolsNumBytes];
       
-      _huffInputBytes = renderFrame.inputData;
+      _imageInputBytes = renderFrame.inputData;
       
 //      if (allocatedSymbolsPtr) {
 //      free(inputSymbolsPtr);
@@ -1833,7 +1833,7 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
         
         fprintf(stdout, "expected symbols\n");
         
-        NSData *expectedData = _huffInputBytes;
+        NSData *expectedData = _imageInputBytes;
         assert(expectedData);
         uint8_t *expectedDataPtr = (uint8_t *) expectedData.bytes;
         //const int numBytes = (int)expectedData.length * sizeof(uint8_t);
@@ -1856,7 +1856,7 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
       // Compare output to expected output
       
       if ((1)) {
-        NSData *expectedData = _huffInputBytes;
+        NSData *expectedData = _imageInputBytes;
         assert(expectedData);
         uint8_t *expectedDataPtr = (uint8_t *) expectedData.bytes;
         const int numBytes = (int)expectedData.length * sizeof(uint8_t);
