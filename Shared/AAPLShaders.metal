@@ -116,6 +116,7 @@ samplingCropShader(RasterizerData in [[stage_in]],
   return outGrayscale;
 }
 
+/*
 // Single byte clz table implementation with
 // special case for clz(0) -> 8 to support
 // 9 bit maximum value with 8 bit input.
@@ -162,6 +163,7 @@ clz4Byte(uint8_t byteVal)
 {
     return clz_byte[byteVal];
 }
+*/
 
 // A single symbol decode step
 
