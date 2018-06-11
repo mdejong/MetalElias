@@ -550,6 +550,10 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
         NSString *path = [tmpDir stringByAppendingPathComponent:@"block_deltas.bytes"];
         [outBlockOrderSymbolsData writeToFile:path atomically:TRUE];
         NSLog(@"wrote %@", path);
+    }
+    
+    if ((0)) {
+        NSString *tmpDir = NSTemporaryDirectory();
         
         // convert signed bytes to unsigned numbers
         
@@ -585,13 +589,20 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
           inNumBytes:outBlockOrderSymbolsNumBytes
             outCodes:outCodes
   outBlockBitOffsets:outBlockBitOffsets
-               width:width
-              height:height
+               width:blockWidth*blockDim
+              height:blockHeight*blockDim
             blockDim:blockDim];
   
   if ((1)) {
     printf("inNumBytes   %8d\n", outBlockOrderSymbolsNumBytes);
     printf("outNumBytes  %8d\n", (int)outCodes.length);
+  }
+    
+  if ((0)) {
+        NSString *tmpDir = NSTemporaryDirectory();
+        NSString *path = [tmpDir stringByAppendingPathComponent:@"block_encoded_elias.bytes"];
+        [outCodes writeToFile:path atomically:TRUE];
+        NSLog(@"wrote %@", path);
   }
   
   // FIXME: allocate huffman encoded bytes with no copy option to share existing mem?
@@ -623,10 +634,13 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
   }
   
   // Init memory buffer that holds bit offsets for each block
-  
+
+  assert(outBlockBitOffsets.length == _blockStartBitOffsets.length);
+    
   uint32_t *blockInPtr = (uint32_t *) outBlockBitOffsets.bytes;
   uint32_t *blockOutPtr = (uint32_t *) _blockStartBitOffsets.contents;
-  int numBlocks = (int)outBlockBitOffsets.length / sizeof(uint32_t);
+  int numBlocks = (int)_blockStartBitOffsets.length / sizeof(uint32_t);
+  assert(numBlocks == (blockWidth * blockHeight));
   
   for (int blocki = 0; blocki < numBlocks; blocki++) {
     int blockiOffset = blockInPtr[blocki];
