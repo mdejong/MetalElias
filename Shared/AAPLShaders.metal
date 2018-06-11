@@ -190,8 +190,14 @@ eliasgDecodeSymbol(
   // Right shift b2 to throw out unused bits
   b2 >>= (8 - numBitsReadMod8);
   inputBitPattern |= b2;
-    
-  ushort countOfZeros = clz(inputBitPattern);
+
+  // clz on 16 bit register
+  //ushort countOfZeros = clz(inputBitPattern);
+
+  // clz on 8 bit value
+  ushort countOfZeros = clz(uint8_t(inputBitPattern >> 8));
+
+  // 8 bit clz lookup table
   //ushort countOfZeros = clz4Byte(uint8_t(inputBitPattern >> 8));
     
   // Shift left to place MSB of symbol at the MSB of 16 bit register
