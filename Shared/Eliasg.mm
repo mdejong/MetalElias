@@ -1,4 +1,4 @@
-// Objective C interface to huffman parsing functions
+// Objective C interface to elias gamma parsing functions
 //  MIT Licensed
 
 #import "Eliasg.h"
@@ -13,6 +13,14 @@
 #import "elias.hpp"
 
 using namespace std;
+
+void
+Eliasg_decodeBlockSymbols(
+                          int numSymbolsToDecode,
+                          uint8_t *bitBuff,
+                          int bitBuffN,
+                          uint8_t *outBuffer,
+                          uint32_t *blockStartBitOffsetsPtr);
 
 // Invoke huffman util module functions
 
@@ -68,6 +76,29 @@ vector<uint32_t> generateBitOffsets(const uint8_t * symbols, int numSymbols)
     }
     
     return bitOffsets;
+}
+
+static inline
+string get_code_bits_as_string(uint32_t code, const int width)
+{
+    string bitsStr;
+    int c4 = 1;
+    for ( int i = 0; i < width; i++ ) {
+        bool isOn = ((code & (0x1 << i)) != 0);
+        if (isOn) {
+            bitsStr = "1" + bitsStr;
+        } else {
+            bitsStr = "0" + bitsStr;
+        }
+        
+        if ((c4 == 4) && (i != (width - 1))) {
+            bitsStr = "-" + bitsStr;
+            c4 = 1;
+        } else {
+            c4++;
+        }
+    }
+    return bitsStr;
 }
 
 // Generate signed delta, note that this method supports repeated value that delta to zero
@@ -324,5 +355,263 @@ pixelpack_int8_to_offset_uint8(int8_t value)
   return [NSData dataWithData:mData];
 }
 
++ (void) decodeBlockSymbols:(int)numSymbolsToDecode
+                    bitBuff:(uint8_t*)bitBuff
+                   bitBuffN:(int)bitBuffN
+                  outBuffer:(uint8_t*)outBuffer
+    blockStartBitOffsetsPtr:(uint32_t*)blockStartBitOffsetsPtr
+{
+    Eliasg_decodeBlockSymbols(numSymbolsToDecode, bitBuff, bitBuffN, outBuffer, blockStartBitOffsetsPtr);
+}
+
 @end
+
+
+// Single byte clz table implementation with
+// special case for clz(0) -> 8 to support
+// 9 bit maximum value with 8 bit input.
+
+static
+uint8_t clz_byte[256] = {
+    8, 7, 6, 6, 5, 5, 5, 5,
+    4, 4, 4, 4, 4, 4, 4, 4,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3,
+    2, 2, 2, 2, 2, 2, 2, 2,
+    2, 2, 2, 2, 2, 2, 2, 2,
+    2, 2, 2, 2, 2, 2, 2, 2,
+    2, 2, 2, 2, 2, 2, 2, 2,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0
+};
+
+ushort
+clz4Byte(uint8_t byteVal)
+{
+    return clz_byte[byteVal];
+}
+
+// branchless version
+
+ushort
+offset_to_num_neg(ushort value) {
+    ushort oneIfOddZeroIfEven = (value & 0x1);
+    // case 0    : val
+    // case even : (value / 2);
+    // case odd  : ((value+1) / 2)
+    ushort valDiv2 = (value + oneIfOddZeroIfEven) >> 1;
+    // even = 1 - 0 - 0 = 1
+    // odd  = 1 - 1 - 1 = -1
+    short negOneIfOddOneIfEven = 1 - oneIfOddZeroIfEven - oneIfOddZeroIfEven;
+    // Represent as unsigned byte
+    return ushort(valDiv2 * negOneIfOddOneIfEven);
+}
+
+// Shader decode loop simulation that is able to decode
+// multiple symbols from a block by looking block start
+// offset up in a table. Note that this impl assumes
+// that there are at least 2 padding bytes at the end
+// of huffBuff so that read ahead does not go past the
+// end of a buffer.
+
+void
+Eliasg_decodeBlockSymbols(
+                               int numSymbolsToDecode,
+                               uint8_t *bitBuff,
+                               int bitBuffN,
+                               uint8_t *outBuffer,
+                               uint32_t *blockStartBitOffsetsPtr)
+{
+    uint16_t inputBitPattern = 0;
+    unsigned int numBitsRead = 0;
+    
+    const int debugOut = 0;
+    const int debugOutShowEmittedSymbols = 0;
+    
+    int symbolsLeftToDecode = numSymbolsToDecode;
+    int symboli = 0;
+    
+    int outOffseti = 0;
+    
+    const int blockDim = 8;
+    int blocki = 0;
+    
+    // Init first symbol to zero, will be reset to zero each time a block
+    // has been fully read.
+    ushort prevSymbol = 0;
+    
+    for ( ; symbolsLeftToDecode > 0; symbolsLeftToDecode--, symboli++ ) {
+        // Gather a 16 bit pattern by reading 2 or 3 bytes.
+        
+        if (debugOut) {
+            printf("decode symbol number %5d : numBitsRead %d\n", symboli, numBitsRead);
+        }
+        
+        if (symboli != 0 && ((symboli % (blockDim * blockDim)) == 0)) {
+            blocki += 1;
+            
+            // When starting a new block, check that numBitsRead matches
+            // the block start offset.
+            
+            int blockBitOffset = blockStartBitOffsetsPtr[blocki];
+            assert(numBitsRead == blockBitOffset);
+            
+            prevSymbol = 0;
+        }
+        
+        const unsigned int numBytesRead = (numBitsRead / 8);
+        const unsigned int numBitsReadMod8 = (numBitsRead % 8);
+        
+        // Read 3 bytes where a partial number of bits
+        // is used from the first byte, then all the
+        // bits in the second pattern are used, followed
+        // by a partial number of bits from the 3rd byte.
+#if defined(DEBUG)
+        assert((numBytesRead+2) < bitBuffN);
+#endif // DEBUG
+        
+        unsigned int b0 = bitBuff[numBytesRead];
+        unsigned int b1 = bitBuff[numBytesRead+1];
+        unsigned int b2 = bitBuff[numBytesRead+2];
+        
+        if (debugOut) {
+            printf("read byte %5d : pattern %s\n", numBytesRead, get_code_bits_as_string(b0, 16).c_str());
+            printf("read byte %5d : pattern %s\n", numBytesRead+1, get_code_bits_as_string(b1, 16).c_str());
+            printf("read byte %5d : pattern %s\n", numBytesRead+2, get_code_bits_as_string(b2, 16).c_str());
+        }
+        
+        // Prepare the input bytes using shifts so that the results always
+        // fit into 16 bit intermediate registers.
+        
+        // Left shift the already consumed bits off left side of b0
+        b0 <<= numBitsReadMod8;
+        b0 &= 0xFF;
+        
+        if (debugOut) {
+            printf("b0 %s\n", get_code_bits_as_string(b0, 16).c_str());
+        }
+        
+        b0 = b0 << 8;
+        
+        if (debugOut) {
+            printf("b0 %s\n", get_code_bits_as_string(b0, 16).c_str());
+        }
+        
+        inputBitPattern = b0;
+        
+        if (debugOut) {
+            printf("inputBitPattern (b0) %s : binary length %d\n", get_code_bits_as_string(inputBitPattern, 16).c_str(), 16);
+        }
+        
+        // Left shift the 8 bits in b1 then OR into inputBitPattern
+        
+        if (debugOut) {
+            printf("b1 %s\n", get_code_bits_as_string(b1, 16).c_str());
+        }
+        
+        b1 <<= numBitsReadMod8;
+        
+        if (debugOut) {
+            printf("b1 %s\n", get_code_bits_as_string(b1, 16).c_str());
+        }
+        
+#if defined(DEBUG)
+        assert((inputBitPattern & b1) == 0);
+#endif // DEBUG
+        
+        inputBitPattern |= b1;
+        
+        if (debugOut) {
+            printf("inputBitPattern (b1) %s : binary length %d\n", get_code_bits_as_string(inputBitPattern, 16).c_str(), 16);
+        }
+        
+        if (debugOut) {
+            printf("b2 %s\n", get_code_bits_as_string(b2, 16).c_str());
+        }
+        
+        // Right shift b2 to throw out unused bits
+        b2 >>= (8 - numBitsReadMod8);
+        
+        if (debugOut) {
+            printf("b2 %s\n", get_code_bits_as_string(b2, 16).c_str());
+        }
+        
+#if defined(DEBUG)
+        assert((inputBitPattern & b2) == 0);
+#endif // DEBUG
+        
+        inputBitPattern |= b2;
+        
+        if (debugOut) {
+            printf("inputBitPattern (b2) %s : binary length %d\n", get_code_bits_as_string(inputBitPattern, 16).c_str(), 16);
+        }
+        
+        if (debugOut) {
+            printf("input bit pattern %s : binary length %d\n", get_code_bits_as_string(inputBitPattern, 16).c_str(), 16);
+        }
+        
+        ushort countOfZeros = clz4Byte(uint8_t(inputBitPattern >> 8));
+        
+        // Shift left to place MSB of symbol at the MSB of 16 bit register
+        ushort shiftedLeft = inputBitPattern << countOfZeros;
+        
+        // Shift right to place MSB of value at correct bit offset
+        ushort shiftedRight = shiftedLeft >> (16 - (countOfZeros+1));
+        
+        VariableBitWidthSymbol vws;
+        vws.symbol = (shiftedRight - 1);;
+        vws.bitWidth = ((countOfZeros << 1) + 1); // ((countOfZeros * 2) + 1);
+        
+        if (debugOut) {
+            printf("decoded elias symbol %d\n", vws.symbol);
+        }
+        
+        numBitsRead += vws.bitWidth;
+        
+        if (debugOut) {
+            printf("consume symbol bits %d\n", vws.bitWidth);
+        }
+        
+        // Convert positive delta back to signed byte value, then
+        // apply delta to previous symbol and constrain to byte range
+        
+        uint8_t unsignedDelta = offset_to_num_neg(vws.symbol);
+        ushort symbol = (prevSymbol + unsignedDelta) & 0xFF;
+        outBuffer[outOffseti++] = symbol;
+        prevSymbol = symbol;
+        
+        if (debugOut) {
+            printf("write symbol %d\n", symbol & 0xFF);
+        }
+        
+        if (debugOutShowEmittedSymbols) {
+            printf("out[%5d] = %3d (aka 0x%02X) : bits %2d : total num bits %5d\n", outOffseti-1, symbol&0xFF, symbol, vws.bitWidth, numBitsRead-vws.bitWidth);
+        }
+    }
+    
+    return;
+}
+
 

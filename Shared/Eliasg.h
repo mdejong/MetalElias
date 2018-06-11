@@ -1,4 +1,4 @@
-// Objective C interface to huffman parsing functions
+// Objective C interface to elias gamma parsing functions
 //  MIT Licensed
 
 #import <Foundation/Foundation.h>
@@ -8,8 +8,8 @@
 // Our platform independent render class
 @interface Eliasg : NSObject
 
-// Given an input buffer, huffman encode the input values and generate
-// output that corresponds to
+// Given an input buffer, encode the input values and generate
+// output that corresponds to elias gamma encoded var length symbols.
 
 + (void) encodeBits:(uint8_t*)inBytes
          inNumBytes:(int)inNumBytes
@@ -39,5 +39,13 @@
 // signed 8 bit deltas to recover the original symbols as uint8_t.
 
 + (NSData*) decodeSignedByteDeltas:(NSData*)deltas;
+
+// Shader simulation entry point.
+
++ (void) decodeBlockSymbols:(int)numSymbolsToDecode
+            bitBuff:(uint8_t*)bitBuff
+           bitBuffN:(int)bitBuffN
+          outBuffer:(uint8_t*)outBuffer
+     blockStartBitOffsetsPtr:(uint32_t*)blockStartBitOffsetsPtr;
 
 @end

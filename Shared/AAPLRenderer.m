@@ -411,8 +411,13 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
              numBlocksInWidth:blockWidth
             numBlocksInHeight:blockHeight
                     zeroValue:0];
-  
-  // Deal with the case where there are not enough total blocks to zero pad
+    
+  // Make a copy of the block order symbols, since calculating deltas will replace
+  // these symbols in place to minimize memory.
+    
+#if defined(DEBUG)
+    NSData *blockOrderSymbolsCopy = [NSMutableData dataWithData:outBlockOrderSymbolsData];
+#endif // DEBUG
   
   if ((0)) {
     //        for (int i = 0; i < outBlockOrderSymbolsNumBytes; i++) {
@@ -633,6 +638,41 @@ const static unsigned int blockDim = HUFF_BLOCK_DIM;
 #endif // DEBUG
     }
   }
+    
+  // Once elias VLS have been encoded and block start offsets have been calculated, it is
+  // possible to execute shader simulation that checks the contents of the generated
+  // buffers with regular C code.
+    
+#if defined(DEBUG)
+    {
+        // These are the decoded deltas turned back into signed deltas
+        uint8_t *decodedSymbols = malloc(outBlockOrderSymbolsNumBytes);
+        assert(decodedSymbols);
+        
+        [Eliasg decodeBlockSymbols:outBlockOrderSymbolsNumBytes
+                           bitBuff:(uint8_t*)outCodes.bytes
+                          bitBuffN:(int)outCodes.length
+                         outBuffer:decodedSymbols
+           blockStartBitOffsetsPtr:blockOutPtr];
+
+        uint8_t *originalBlockOrderSymbolsPtr = (uint8_t *) blockOrderSymbolsCopy.bytes;
+        
+        for ( int i = 0; i < outBlockOrderSymbolsNumBytes; i++) {
+            int inSymbol = originalBlockOrderSymbolsPtr[i];
+            int outSymbol = decodedSymbols[i];
+            if (inSymbol != outSymbol) {
+                printf("offset %d : inSymbol != outSymbol : %d != %d\n", i, inSymbol, outSymbol);
+                assert(0);
+            } else {
+                if ((0)) {
+                  printf("offset %d : inSymbol == outSymbol : %d == %d\n", i, inSymbol, outSymbol);
+                }
+            }
+        }
+        
+        free(decodedSymbols);
+    }
+#endif // DEBUG
   
   return;
 }
