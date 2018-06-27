@@ -12,7 +12,7 @@ This encoder/decoder implementation of GPU based Elias gamma decoding is a test 
 
 ## Decoding Speed
 
-Please note that current results indicate decoding on the CPU is significantly faster than decoding on the GPU, since each decoding step in a block has to wait until the previous one has completed. Processing blocks in paralleel does not appear to be competitive when compared to executing on the CPU.
+Please note that current results indicate decoding on the CPU is significantly faster than decoding on the GPU, since each decoding step in a block has to wait until the previous one has completed. Processing blocks in parallel does not appear to be competitive when compared to executing on the CPU.
 
 ## Implementation
 
