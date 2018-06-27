@@ -8,11 +8,11 @@ This project is adapted from a Metal huffman implementation. See [MetalHuffman] 
 
 ## Status
 
-This encoder/decoder implementation GPU based Elias gamma decoding is a test of parellel block based decoding speed.
+This encoder/decoder implementation of GPU based Elias gamma decoding is a test of parellel block based decoding speed.
 
 ## Decoding Speed
 
-Please note that current results indicate decoding on the CPU is significantly faster than decoding on the GPU since each decoding step has to wait until the previous one has completed.
+Please note that current results indicate decoding on the CPU is significantly faster than decoding on the GPU, since each decoding step in a block has to wait until the previous one has completed. Processing blocks in parelleel does not appear to be competitive when compared to executing on the CPU.
 
 ## Implementation
 
